@@ -5,6 +5,8 @@ export type ServiceKind =
   | 'sonarr'
   | 'prowlarr'
   | 'qbittorrent'
+  | 'sabnzbd'
+  | 'nzbget'
   | 'bazarr'
   | 'jellyfin'
   | 'plex'
@@ -62,7 +64,7 @@ export type QueueState =
 export interface QueueItem {
   id: string; // torrent hash or <source>:<queue id>
   name: string;
-  source: 'qbittorrent' | 'radarr' | 'sonarr';
+  source: 'qbittorrent' | 'sabnzbd' | 'nzbget' | 'radarr' | 'sonarr';
   state: QueueState;
   progress: number; // 0..100
   size?: number | null; // bytes
@@ -305,6 +307,7 @@ export interface SystemSettings {
   vpn_has_openvpn_credentials?: boolean;
   vpn_has_wireguard_key?: boolean;
   plex_claim_saved?: boolean;
+  download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget' | null;
 }
 
 export interface SystemSettingsUpdate {
@@ -320,6 +323,7 @@ export interface SystemSettingsUpdate {
   vpn_password?: string;
   wireguard_private_key?: string;
   plex_claim?: string;
+  download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget';
 }
 
 // API Error Shape
