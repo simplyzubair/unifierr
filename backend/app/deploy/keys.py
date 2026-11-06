@@ -139,3 +139,99 @@ def preseed_qbittorrent(config_dir: str, username: str, password: str) -> None:
         "Downloads\\SavePath=/data/torrents/\n"
     )
     conf_path.write_text(conf_content, encoding="utf-8")
+
+
+def read_sabnzbd_api_key(config_dir: str) -> str | None:
+    """Read SABnzbd's API key from its sabnzbd.ini ([misc] api_key).
+
+    The linuxserver container stores it at /config/sabnzbd.ini. Returns None when missing.
+    """
+    for rel in ("sabnzbd.ini", "config/sabnzbd.ini"):
+        path = Path(config_dir) / rel
+        if not path.is_file():
+            continue
+        try:
+            cp = configparser.ConfigParser()
+            cp.read(path, encoding="utf-8", errors="replace")
+            if cp.has_option("misc", "api_key"):
+                key = cp.get("misc", "api_key").strip()
+                if key:
+                    return key
+        except (OSError, configparser.Error):
+            continue
+        # Fallback regex in case the INI is slightly garbled
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"^\s*api_key\s*=\s*(\S+)", content, re.MULTILINE | re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        except OSError:
+            pass
+    return None
+
+
+def read_nzbget_credentials(config_dir: str) -> tuple[str | None, str | None]:
+    """Read NZBGet's control username/password from nzbget.conf.
+
+    The linuxserver container stores it at /config/nzbget.conf. Returns (username, password);
+    either may be None when the file is missing or the setting is absent.
+    """
+    path = Path(config_dir) / "nzbget.conf"
+    if not path.is_file():
+        return None, None
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None, None
+    username = password = None
+    m = re.search(r"^\s*ControlUsername\s*=\s*(\S+)", content, re.MULTILINE)
+    if m:
+        username = m.group(1).strip()
+    m = re.search(r"^\s*ControlPassword\s*=\s*(\S+)", content, re.MULTILINE)
+    if m:
+        password = m.group(1).strip()
+    return username or None, password or None
+
+
+def preseed_sabnzbd(config_dir: str, api_key: str) -> None:
+    """Write a minimal sabnzbd.ini with the API key if none exists.
+
+    The host whitelist includes the container names Unifierr uses, so API calls from the
+    other apps and from Unifierr itself are accepted. Never overwrites an existing file.
+    """
+    path = Path(config_dir) / "sabnzbd.ini"
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "[misc]\n"
+        f"api_key = {api_key}\n"
+        "host_whitelist = unifierr, sabnzbd, localhost\n"
+        "[nzb]\n"
+        "dirscan_dir = /data/usenet/incoming\n"
+        "complete_dir = /data/usenet/complete\n",
+        encoding="utf-8",
+    )
+
+
+def preseed_nzbget(config_dir: str, username: str, password: str) -> None:
+    """Write a minimal nzbget.conf with control credentials if none exists.
+
+    The control user is what Unifierr and the *arr apps use to talk to NZBGet.
+    Never overwrites an existing file.
+    """
+    path = Path(config_dir) / "nzbget.conf"
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"ControlUsername={username}\n"
+        f"ControlPassword={password}\n"
+        "MainDir=/config\n"
+        "DestDir=/data/usenet/complete\n"
+        "InterDir=/config/intermediate\n"
+        "NzbDir=/config/nzb\n"
+        "QueueDir=/config/queue\n"
+        "TempDir=/config/tmp\n",
+        encoding="utf-8",
+    )

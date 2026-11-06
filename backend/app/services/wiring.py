@@ -13,11 +13,15 @@ from app.adapters.base import ServiceKind
 from app.core.crypto import decrypt, encrypt
 from app.core.db import sessionmaker
 from app.core.errors import UnifierrError
+from app.models import Service
 from app.services.common import (
+    DOWNLOAD_CLIENTS,
     MOVIES_PATH,
     TORRENTS_MOVIES,
     TORRENTS_TV,
     TV_PATH,
+    USENET_MOVIES,
+    USENET_TV,
     adapter_for,
     get_service,
     get_setting,
@@ -28,18 +32,42 @@ from app.services.common import (
 from app.services.jobs import Job
 
 ARR_CATEGORIES = {ServiceKind.radarr: ("radarr", TORRENTS_MOVIES), ServiceKind.sonarr: ("tv-sonarr", TORRENTS_TV)}
+USENET_SAVE_PATHS = {ServiceKind.radarr: USENET_MOVIES, ServiceKind.sonarr: USENET_TV}
 DEFAULT_PORTS = {
     ServiceKind.radarr: 7878, ServiceKind.sonarr: 8989, ServiceKind.prowlarr: 9696,
-    ServiceKind.qbittorrent: 8080, ServiceKind.bazarr: 6767, ServiceKind.jellyfin: 8096, ServiceKind.plex: 32400,
+    ServiceKind.qbittorrent: 8080, ServiceKind.sabnzbd: 8080, ServiceKind.nzbget: 6789,
+    ServiceKind.bazarr: 6767, ServiceKind.jellyfin: 8096, ServiceKind.plex: 32400,
 }
+CLIENT_DISPLAY = {ServiceKind.qbittorrent: "qBittorrent", ServiceKind.sabnzbd: "SABnzbd",
+                  ServiceKind.nzbget: "NZBGet"}
 
 
 def _internal_url(svc) -> str:
     return (svc.internal_url or svc.base_url).rstrip("/")
 
 
+async def _selected_download_client(db: AsyncSession) -> tuple[ServiceKind | None, Service | None]:
+    """The download client the user picked in the wizard, falling back to whichever is connected."""
+    choice = await get_setting(db, "download_client")
+    if choice:
+        try:
+            chosen = ServiceKind(str(choice))
+        except ValueError:
+            chosen = None
+        if chosen is not None:
+            svc = await get_service(db, chosen)
+            if svc is not None:
+                return chosen, svc
+    for kind in DOWNLOAD_CLIENTS:
+        svc = await get_service(db, kind)
+        if svc is not None:
+            return kind, svc
+    return None, None
+
+
 async def _wire_arr_basics(db: AsyncSession, job: Job) -> None:
-    qbit = await get_service(db, ServiceKind.qbittorrent)
+    dl_kind, dl_svc = await _selected_download_client(db)
+    dl_name = CLIENT_DISPLAY.get(dl_kind, "a download client") if dl_kind else None
     for kind, root in ((ServiceKind.radarr, MOVIES_PATH), (ServiceKind.sonarr, TV_PATH)):
         name = kind.value.capitalize()
         svc = await get_service(db, kind)
@@ -59,27 +87,41 @@ async def _wire_arr_basics(db: AsyncSession, job: Job) -> None:
         except Exception as exc:  # noqa: BLE001
             job.fail(s, exc)
 
-        s = job.step(f"Connect {name} to qBittorrent")
-        if qbit is None:
-            job.skip(s, "qBittorrent is not connected.")
+        s = job.step(f"Connect {name} to {dl_name or 'a download client'}")
+        if dl_svc is None or dl_kind is None:
+            job.skip(s, "No download client (qBittorrent, SABnzbd or NZBGet) is connected.")
             continue
-        category, save_path = ARR_CATEGORIES[kind]
+        category, torrent_path = ARR_CATEGORIES[kind]
         try:
-            host, port, _ = internal_host_port(qbit, DEFAULT_PORTS[ServiceKind.qbittorrent])
-            async with adapter_for(db, ServiceKind.qbittorrent) as q:
-                await q.ensure_category(category, save_path)
-            async with adapter_for(db, kind) as arr:
-                await arr.ensure_qbittorrent_client(
-                    host=host, port=port, username=qbit.username or "",
-                    password=decrypt(qbit.password_enc) or "", category=category,
-                )
-            job.ok(s, f"Downloads for {name} go to {save_path}")
+            host, port, ssl = internal_host_port(dl_svc, DEFAULT_PORTS[dl_kind])
+            if dl_kind == ServiceKind.qbittorrent:
+                async with adapter_for(db, ServiceKind.qbittorrent) as q:
+                    await q.ensure_category(category, torrent_path)
+                async with adapter_for(db, kind) as arr:
+                    await arr.ensure_qbittorrent_client(
+                        host=host, port=port, username=dl_svc.username or "",
+                        password=decrypt(dl_svc.password_enc) or "", category=category, use_ssl=ssl,
+                    )
+            else:
+                # Usenet: the same categories, but downloads land in /data/usenet/…
+                save_path = USENET_SAVE_PATHS[kind]
+                async with adapter_for(db, dl_kind) as dl:
+                    await dl.ensure_category(category, save_path)
+                async with adapter_for(db, kind) as arr:
+                    await arr.ensure_usenet_client(
+                        client=dl_kind.value, host=host, port=port,
+                        api_key=decrypt(dl_svc.api_key_enc) if dl_svc.api_key_enc else None,
+                        username=dl_svc.username, password=decrypt(dl_svc.password_enc) or None,
+                        category=category, use_ssl=ssl,
+                    )
+            job.ok(s, f"Downloads for {name} go through {dl_name} to {torrent_path if dl_kind == ServiceKind.qbittorrent else save_path}")
         except Exception as exc:  # noqa: BLE001
             job.fail(s, exc)
 
 
 async def _wire_prowlarr(db: AsyncSession, job: Job) -> None:
     prowlarr = await get_service(db, ServiceKind.prowlarr)
+    app_ids: dict[ServiceKind, int] = {}
     for kind in (ServiceKind.radarr, ServiceKind.sonarr):
         name = kind.value.capitalize()
         s = job.step(f"Share indexers with {name}")
@@ -92,13 +134,35 @@ async def _wire_prowlarr(db: AsyncSession, job: Job) -> None:
             continue
         try:
             async with adapter_for(db, ServiceKind.prowlarr) as p:
-                await p.ensure_application(
+                app = await p.ensure_application(
                     kind=kind.value, app_url=_internal_url(svc), app_api_key=decrypt(svc.api_key_enc) or "",
                     prowlarr_url=_internal_url(prowlarr),
                 )
+                if isinstance(app, dict) and app.get("id") is not None:
+                    app_ids[kind] = int(app["id"])
             job.ok(s, f"Indexers you add in Unifierr are copied to {name} automatically.")
         except Exception as exc:  # noqa: BLE001
             job.fail(s, exc)
+
+    # Verify the Prowlarr -> *arr sync actually carries Usenet indexers over.
+    s = job.step("Copy Usenet indexers to Radarr and Sonarr")
+    if prowlarr is None:
+        job.skip(s, "Prowlarr is not connected.")
+        return
+    if not app_ids:
+        job.skip(s, "Radarr and Sonarr are not connected, so there is nowhere to copy indexers yet.")
+        return
+    try:
+        async with adapter_for(db, ServiceKind.prowlarr) as p:
+            usenet = [i for i in await p.indexers() if str(i.protocol).lower() == "usenet" and i.enabled]
+            if not usenet:
+                job.skip(s, "No Usenet indexers are set up yet. Add one under Indexers and it is copied over.")
+                return
+            for app_id in app_ids.values():
+                await p.sync_application(app_id)
+        job.ok(s, f"{len(usenet)} Usenet indexer(s) pushed to Radarr and Sonarr.")
+    except Exception as exc:  # noqa: BLE001
+        job.fail(s, exc)
 
 
 async def _wire_bazarr(db: AsyncSession, job: Job) -> None:

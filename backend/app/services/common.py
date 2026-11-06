@@ -28,6 +28,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "vpn_type": "openvpn",
     "vpn_server_countries": "",
     "vpn_container_name": "gluetun",
+    "download_client": None,  # qbittorrent | sabnzbd | nzbget (picked in the wizard)
 }
 
 # Paths as seen INSIDE the managed containers (all mount <root>/data at /data).
@@ -35,6 +36,11 @@ MOVIES_PATH = "/data/media/movies"
 TV_PATH = "/data/media/tv"
 TORRENTS_MOVIES = "/data/torrents/movies"
 TORRENTS_TV = "/data/torrents/tv"
+USENET_MOVIES = "/data/usenet/movies"
+USENET_TV = "/data/usenet/tv"
+
+# The download client kinds, in the order they are preferred when the user has not chosen one.
+DOWNLOAD_CLIENTS: tuple[ServiceKind, ...] = (ServiceKind.qbittorrent, ServiceKind.sabnzbd, ServiceKind.nzbget)
 
 
 async def get_setting(db: AsyncSession, key: str) -> Any:

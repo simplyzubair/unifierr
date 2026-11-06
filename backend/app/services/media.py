@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel
@@ -138,6 +139,97 @@ async def recent(db: AsyncSession) -> list[MediaItem]:
             async with adapter_for(db, kind) as server:
                 return await server.recently_added(20)
     return []
+
+
+# ---------------- downloads ----------------
+
+# Every download client whose queue appears in the unified Downloads view.
+DOWNLOAD_SOURCE_KINDS: tuple[ServiceKind, ...] = (
+    ServiceKind.qbittorrent, ServiceKind.sabnzbd, ServiceKind.nzbget,
+)
+# "<prefix>:<id>" item ids for clients whose native id is not a torrent hash.
+CLIENT_BY_PREFIX: dict[str, ServiceKind] = {
+    "sabnzbd": ServiceKind.sabnzbd, "nzbget": ServiceKind.nzbget,
+}
+HASH_RE = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
+
+
+def _same_download(client_id: str, arr_id: str) -> bool:
+    """Radarr/Sonarr report the client's download id without Unifierr's '<source>:' prefix."""
+    def bare(i: str) -> str:
+        prefix, _, rest = i.partition(":")
+        return rest if prefix in CLIENT_BY_PREFIX else i
+
+    return client_id.lower() == arr_id.lower() or bare(client_id).lower() == bare(arr_id).lower()
+
+
+async def downloads_snapshot(db: AsyncSession) -> dict:
+    """The unified Downloads view: every connected download client's queue merged with the
+    Radarr/Sonarr queues (which add the movie/show title and the importing state), plus speeds."""
+    items: dict[str, QueueItem] = {}
+    dl = up = 0
+    for client_kind in DOWNLOAD_SOURCE_KINDS:
+        try:
+            async with adapter_for(db, client_kind, required=False) as client:
+                if client is None:
+                    continue
+                client_items, info = await asyncio.gather(client.queue(), client.transfer_info())
+        except Exception as exc:  # noqa: BLE001 - one broken client must not hide the others
+            log.warning("Downloads lookup failed for %s: %s", client_kind, exc)
+            continue
+        for t in client_items:
+            items[t.id] = t
+        dl += int(info.get("dl_speed") or 0)
+        up += int(info.get("up_speed") or 0)
+
+    for kind in (ServiceKind.radarr, ServiceKind.sonarr):
+        try:
+            async with adapter_for(db, kind, required=False) as arr:
+                if arr is None:
+                    continue
+                for qi in await arr.queue():
+                    match = next((cid for cid in items if _same_download(cid, qi.id)), None)
+                    if match is not None:
+                        t = items[match]
+                        items[match] = t.model_copy(update={
+                            "media_title": qi.media_title, "media_type": qi.media_type,
+                            "error": t.error or qi.error,
+                            "state": "importing" if qi.state == "importing" else t.state})
+                    else:
+                        items.setdefault(qi.id, qi)  # waiting import, or a client Unifierr does not manage
+        except UnifierrError:
+            continue  # queue enrichment is optional; the client data is still shown
+    return {"items": list(items.values()), "dl_speed": dl, "up_speed": up}
+
+
+def _route_item(item_id: str) -> tuple[ServiceKind, str]:
+    """Which download client owns this item id, and the id that client understands."""
+    lower = item_id.lower()
+    if HASH_RE.match(lower):
+        return ServiceKind.qbittorrent, lower
+    prefix, _, rest = item_id.partition(":")
+    if prefix in CLIENT_BY_PREFIX and rest:
+        return CLIENT_BY_PREFIX[prefix], rest
+    raise UnifierrError(
+        "This download cannot be paused, retried or removed here",
+        explanation="This item is only in the Radarr/Sonarr queue, not in a download client Unifierr manages.",
+    )
+
+
+async def downloads_action(db: AsyncSession, item_id: str, action: str, *, delete_files: bool = False) -> None:
+    """Pause, resume, retry or remove one download in whichever client owns it."""
+    kind, raw = _route_item(item_id)
+    async with adapter_for(db, kind) as client:
+        if action == "pause":
+            await client.pause([raw])
+        elif action == "resume":
+            await client.resume([raw])
+        elif action == "retry":
+            await client.retry([raw])
+        elif action == "delete":
+            await client.delete([raw], delete_files=delete_files)
+        else:  # pragma: no cover - API routes only pass known actions
+            raise UnifierrError(f"Unknown download action: {action}")
 
 
 # ---------------- requests ----------------

@@ -22,6 +22,8 @@ class ServiceKind(StrEnum):
     sonarr = "sonarr"
     prowlarr = "prowlarr"
     qbittorrent = "qbittorrent"
+    sabnzbd = "sabnzbd"
+    nzbget = "nzbget"
     bazarr = "bazarr"
     jellyfin = "jellyfin"
     plex = "plex"
@@ -80,10 +82,10 @@ class MediaItem(BaseModel):
 
 
 class QueueItem(BaseModel):
-    """One download, merged from qBittorrent and/or Radarr/Sonarr queues."""
+    """One download, merged from the download clients and/or the Radarr/Sonarr queues."""
     id: str  # torrent hash (lowercase) when known, otherwise "<source>:<queue id>"
     name: str
-    source: Literal["qbittorrent", "radarr", "sonarr"]
+    source: Literal["qbittorrent", "sabnzbd", "nzbget", "radarr", "sonarr"]
     state: Literal["downloading", "seeding", "paused", "queued", "stalled", "checking", "completed",
                    "importing", "error", "unknown"]
     progress: float  # 0..100

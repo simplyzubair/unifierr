@@ -1,6 +1,4 @@
 """Admin operations: downloads, indexers, subtitles, storage, health, events."""
-import asyncio
-import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -9,73 +7,45 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.adapters.base import QueueItem, ServiceKind
+from app.adapters.base import ServiceKind
 from app.core.db import get_db
 from app.core.errors import UnifierrError
 from app.core.security import require_admin
 from app.models import Event
-from app.services import health
+from app.services import health, media
 from app.services.common import adapter_for, get_setting, log_event
 
 router = APIRouter(dependencies=[Depends(require_admin)])
-HASH_RE = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
 
 
 # ---------------- downloads ----------------
 
 @router.get("/downloads")
 async def downloads(db: AsyncSession = Depends(get_db)):
-    """qBittorrent torrents merged with the Radarr/Sonarr queues (adds the movie/show title)."""
-    items: dict[str, QueueItem] = {}
-    dl = up = 0
-    async with adapter_for(db, ServiceKind.qbittorrent, required=False) as q:
-        if q is not None:
-            torrents, info = await asyncio.gather(q.torrents(), q.transfer_info())
-            items = {t.id: t for t in torrents}
-            dl, up = int(info.get("dl_speed") or 0), int(info.get("up_speed") or 0)
-    for kind in (ServiceKind.radarr, ServiceKind.sonarr):
-        try:
-            async with adapter_for(db, kind, required=False) as arr:
-                if arr is None:
-                    continue
-                for qi in await arr.queue():
-                    if qi.id in items:
-                        t = items[qi.id]
-                        items[qi.id] = t.model_copy(update={
-                            "media_title": qi.media_title, "media_type": qi.media_type,
-                            "error": t.error or qi.error,
-                            "state": "importing" if qi.state == "importing" else t.state})
-                    else:
-                        items[qi.id] = qi  # e.g. waiting to import, or a client Unifierr doesn't manage
-        except UnifierrError:
-            continue  # queue enrichment is optional; qBittorrent data is still shown
-    return {"items": list(items.values()), "dl_speed": dl, "up_speed": up}
-
-
-def _hash(item_id: str) -> str:
-    h = item_id.lower()
-    if not HASH_RE.match(h):
-        raise UnifierrError("Only qBittorrent downloads can be paused or removed here.",
-                            explanation="This item is in the Radarr/Sonarr queue but not in qBittorrent.")
-    return h
+    """qBittorrent, SABnzbd and NZBGet queues merged with the Radarr/Sonarr queues (adds titles)."""
+    return await media.downloads_snapshot(db)
 
 
 @router.post("/downloads/{item_id}/pause", status_code=204)
 async def pause(item_id: str, db: AsyncSession = Depends(get_db)):
-    async with adapter_for(db, ServiceKind.qbittorrent) as q:
-        await q.pause([_hash(item_id)])
+    await media.downloads_action(db, item_id, "pause")
 
 
 @router.post("/downloads/{item_id}/resume", status_code=204)
 async def resume(item_id: str, db: AsyncSession = Depends(get_db)):
-    async with adapter_for(db, ServiceKind.qbittorrent) as q:
-        await q.resume([_hash(item_id)])
+    await media.downloads_action(db, item_id, "resume")
+
+
+@router.post("/downloads/{item_id}/retry", status_code=204)
+async def retry(item_id: str, db: AsyncSession = Depends(get_db)):
+    """Try a failed download again (Usenet clients support this; torrents are restarted via resume)."""
+    await media.downloads_action(db, item_id, "retry")
+    await log_event(db, "downloads", f"Retrying download {item_id[:8]}…")
 
 
 @router.delete("/downloads/{item_id}", status_code=204)
 async def remove(item_id: str, delete_files: bool = False, db: AsyncSession = Depends(get_db)):
-    async with adapter_for(db, ServiceKind.qbittorrent) as q:
-        await q.delete([_hash(item_id)], delete_files=delete_files)
+    await media.downloads_action(db, item_id, "delete", delete_files=delete_files)
     await log_event(db, "downloads", f"Removed download {item_id[:8]}… (files deleted: {delete_files}).")
 
 

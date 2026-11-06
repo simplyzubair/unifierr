@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from app.adapters.base import ServiceKind
 from app.deploy.catalog import CATALOG
 from app.deploy.docker_manager import ContainerInfo, DockerManager
-from app.deploy.keys import read_arr_api_key, read_bazarr_api_key
+from app.deploy.keys import read_arr_api_key, read_bazarr_api_key, read_nzbget_credentials, read_sabnzbd_api_key
 
 
 class DetectedApp(BaseModel):
@@ -40,6 +40,10 @@ def _match_kind(c: ContainerInfo) -> ServiceKind | None:
         return ServiceKind.prowlarr
     if "qbittorrent" in img or "qbittorrent" in name or "qbit" in img or "qbit" in name:
         return ServiceKind.qbittorrent
+    if "sabnzbd" in img or "sabnzbd" in name:
+        return ServiceKind.sabnzbd
+    if "nzbget" in img or "nzbget" in name:
+        return ServiceKind.nzbget
     if "bazarr" in img or "bazarr" in name:
         return ServiceKind.bazarr
     if "jellyfin" in img or "jellyfin" in name:
@@ -161,6 +165,12 @@ async def detect_apps(
                 elif kind == ServiceKind.bazarr:
                     key = read_bazarr_api_key(config_path)
                     api_key_found = bool(key)
+                elif kind == ServiceKind.sabnzbd:
+                    key = read_sabnzbd_api_key(config_path)
+                    api_key_found = bool(key)
+                elif kind == ServiceKind.nzbget:
+                    _, password = read_nzbget_credentials(config_path)
+                    api_key_found = bool(password)
 
             managed = c.labels.get("io.unifierr.managed") == "true"
 

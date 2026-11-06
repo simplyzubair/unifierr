@@ -24,14 +24,15 @@ from app.services.jobs import Job
 
 log = logging.getLogger("unifierr.installer")
 
-# Install order matters: download client and indexers before the apps that use them.
-INSTALL_ORDER = [
-    ServiceKind.gluetun, ServiceKind.qbittorrent, ServiceKind.prowlarr, ServiceKind.radarr,
-    ServiceKind.sonarr, ServiceKind.bazarr, ServiceKind.jellyfin, ServiceKind.plex,
-]
+# Install order matters: download clients and indexers before the apps that use them.
+INSTALL_ORDER = [ServiceKind.gluetun, ServiceKind.qbittorrent, ServiceKind.sabnzbd, ServiceKind.nzbget,
+                 ServiceKind.prowlarr, ServiceKind.radarr, ServiceKind.sonarr, ServiceKind.bazarr,
+                 ServiceKind.jellyfin, ServiceKind.plex]
 ARR_KINDS = {ServiceKind.radarr, ServiceKind.sonarr, ServiceKind.prowlarr}
-VPN_ROUTED_KINDS = {ServiceKind.qbittorrent, ServiceKind.prowlarr}
-DISPLAY = {k: k.value.capitalize() for k in ServiceKind} | {ServiceKind.qbittorrent: "qBittorrent"}
+VPN_ROUTED_KINDS = {ServiceKind.qbittorrent, ServiceKind.prowlarr, ServiceKind.sabnzbd, ServiceKind.nzbget}
+DISPLAY = {k: k.value.capitalize() for k in ServiceKind} | {
+    ServiceKind.qbittorrent: "qBittorrent", ServiceKind.sabnzbd: "SABnzbd", ServiceKind.nzbget: "NZBGet",
+}
 
 
 @lru_cache
@@ -161,6 +162,12 @@ async def install_one(db: AsyncSession, job: Job, kind: ServiceKind, settings: d
     elif kind == ServiceKind.qbittorrent:
         username, password = "admin", secrets.token_urlsafe(16)
         await run_in_threadpool(keys.preseed_qbittorrent, str(cfg), username, password)
+    elif kind == ServiceKind.sabnzbd:
+        api_key = keys.generate_api_key()
+        await run_in_threadpool(keys.preseed_sabnzbd, str(cfg), api_key)
+    elif kind == ServiceKind.nzbget:
+        username, password = "admin", secrets.token_urlsafe(16)
+        await run_in_threadpool(keys.preseed_nzbget, str(cfg), username, password)
 
     network_mode = None
     if settings.get("vpn_enabled") and spec.vpn_routed:
@@ -195,6 +202,10 @@ async def install_one(db: AsyncSession, job: Job, kind: ServiceKind, settings: d
             raise UnifierrError("Could not read Bazarr's API key",
                                 explanation="Bazarr started but its settings file was not readable yet.",
                                 fix="Press Retry in a minute.")
+    elif kind == ServiceKind.sabnzbd:
+        api_key = await wait_for_file_key(keys.read_sabnzbd_api_key, str(cfg)) or api_key
+    elif kind == ServiceKind.nzbget:
+        await wait_for_file_key(lambda d: (keys.read_nzbget_credentials(d)[1]), str(cfg))
     elif kind == ServiceKind.jellyfin:
         username = "admin"  # the Jellyfin wizard runs during the "connect everything" step
 
@@ -265,7 +276,8 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
     from app.deploy import keys
 
     container_name = config_path = None
-    if not base_url or (kind in ARR_KINDS | {ServiceKind.bazarr} and not api_key):
+    if not base_url or (kind in ARR_KINDS | {ServiceKind.bazarr, ServiceKind.sabnzbd} and not api_key) \
+            or (kind == ServiceKind.nzbget and not password):
         from app.deploy.detect import detect_apps
 
         found = [d for d in await _detect(detect_apps) if d.kind == kind]
@@ -279,9 +291,18 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
         raise UnifierrError(f"Could not find {DISPLAY[kind]}",
                             explanation="It was not found in Docker or on the usual network addresses.",
                             fix="Open Advanced and type its address, e.g. http://192.168.1.10:7878")
-    if not api_key and config_path and kind in ARR_KINDS | {ServiceKind.bazarr}:
-        reader = keys.read_bazarr_api_key if kind == ServiceKind.bazarr else keys.read_arr_api_key
+    if not api_key and config_path and kind in ARR_KINDS | {ServiceKind.bazarr, ServiceKind.sabnzbd}:
+        if kind == ServiceKind.bazarr:
+            reader = keys.read_bazarr_api_key
+        elif kind == ServiceKind.sabnzbd:
+            reader = keys.read_sabnzbd_api_key
+        else:
+            reader = keys.read_arr_api_key
         api_key = await run_in_threadpool(reader, config_path)
+    if kind == ServiceKind.nzbget and config_path and (not username or not password):
+        # linuxserver NZBGet stores its control login in nzbget.conf.
+        u, p = await run_in_threadpool(keys.read_nzbget_credentials, config_path)
+        username, password = username or u, password or p
     if kind == ServiceKind.qbittorrent and not password and container_name:
         # linuxserver qBittorrent >= 4.6.1 prints a temporary password in its log on every start.
         try:
@@ -292,13 +313,22 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
         except Exception as exc:  # noqa: BLE001 - optional convenience only
             log.info("Could not read qBittorrent's temporary password from its log: %s", exc)
 
-    if not api_key and kind in ARR_KINDS | {ServiceKind.bazarr}:
+    if not api_key and kind in ARR_KINDS | {ServiceKind.bazarr, ServiceKind.sabnzbd}:
         name = DISPLAY[kind]
+        where = "Settings → General → Security → API Key" if kind in ARR_KINDS | {ServiceKind.bazarr} \
+            else "Settings → General → Security → API key"
         raise UnifierrError(
             f"Found {name}, but not its API key",
             explanation=f"Unifierr reads the key from {name}'s settings folder. That only works when {name} "
                         "runs in Docker on this machine. Here it runs somewhere else, so the folder is not visible.",
-            fix=f"Click Advanced and paste the key from {name} → Settings → General → Security → API Key.",
+            fix=f"Click Advanced and paste the key from {name} → {where}.",
+        )
+    if kind == ServiceKind.nzbget and not password:
+        raise UnifierrError(
+            "Found NZBGet, but not its control login",
+            explanation="Unifierr reads the control username and password from NZBGet's settings folder. That "
+                        "only works when NZBGet runs in Docker on this machine.",
+            fix="Click Advanced and type NZBGet's control username and password.",
         )
     conn = Connection(kind=kind, base_url=base_url.rstrip("/"), api_key=api_key, username=username,
                       password=password)

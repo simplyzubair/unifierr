@@ -452,6 +452,28 @@ class ArrAdapter(ArrBase):
             top={"name": "qBittorrent", "enable": True, "priority": 1, "protocol": "torrent", "tags": []},
         )
 
+    async def ensure_usenet_client(self, *, client: str, host: str, port: int,
+                                   api_key: str | None = None, username: str | None = None,
+                                   password: str | None = None, category: str | None = None,
+                                   use_ssl: bool = False) -> dict[str, Any]:
+        """Wire a Usenet download client (SABnzbd or NZBGet) into this *arr app, idempotently."""
+        client = str(client).lower()
+        category = category or ("radarr" if self.qbit_category_field == "movieCategory" else "tv-sonarr")
+        if client == "sabnzbd":
+            implementation, name = "Sabnzbd", "SABnzbd"
+            values: dict[str, Any] = {"host": host, "port": int(port), "useSsl": use_ssl, "apiKey": api_key or "",
+                                      self.qbit_category_field: category}
+        elif client == "nzbget":
+            implementation, name = "Nzbget", "NZBGet"
+            values = {"host": host, "port": int(port), "useSsl": use_ssl, "username": username or "",
+                      "password": password or "", self.qbit_category_field: category}
+        else:
+            raise ServiceUnavailable(f"Unsupported download client: {client}")
+        return await self._ensure_provider(
+            "downloadclient", implementation=implementation, match_field="host", match_value=host, values=values,
+            top={"name": name, "enable": True, "priority": 1, "protocol": "usenet", "tags": []},
+        )
+
     async def ensure_media_server_notification(self, *, kind: str, host: str, port: int, api_key: str,
                                                use_ssl: bool = False) -> dict[str, Any]:
         kind = str(kind).lower()

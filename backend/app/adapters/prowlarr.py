@@ -121,3 +121,7 @@ class ProwlarrAdapter(ArrBase):
             values={"prowlarrUrl": prowlarr_url, "baseUrl": app_url, "apiKey": app_api_key},
             top={"name": kind.capitalize(), "syncLevel": "fullSync", "tags": []},
         )
+
+    async def sync_application(self, app_id: int) -> None:
+        """Ask Prowlarr to push its indexers (torrent AND Usenet) to Radarr/Sonarr right now."""
+        await self._api("POST", f"/application/{app_id}/sync")
