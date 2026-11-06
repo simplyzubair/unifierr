@@ -270,6 +270,81 @@ def merge_fields(fields: list[dict[str, Any]], values: dict[str, Any]) -> tuple[
     return out, changed
 
 
+def normalize_cf_spec_fields(fields: Any) -> list[dict[str, Any]]:
+    """Convert TRaSH spec fields (`{"value": ...}` or `[{"name": "value", "value": ...}]`) to *arr API format."""
+    if isinstance(fields, dict):
+        return [{"name": str(k), "value": v} for k, v in fields.items()]
+    if isinstance(fields, list):
+        return [{"name": str(f.get("name", "")), "value": f.get("value")}
+                for f in fields if isinstance(f, dict) and "name" in f]
+    return []
+
+
+def normalize_cf_payload(cf: dict[str, Any]) -> dict[str, Any]:
+    """Build a clean *arr `/customformat` request body (stripping `trash_*` / `score` metadata)."""
+    specs: list[dict[str, Any]] = []
+    for s in cf.get("specifications") or []:
+        specs.append({
+            "name": str(s.get("name", "")),
+            "implementation": str(s.get("implementation", "")),
+            "negate": bool(s.get("negate", False)),
+            "required": bool(s.get("required", False)),
+            "fields": normalize_cf_spec_fields(s.get("fields")),
+        })
+    return {
+        "name": str(cf["name"]),
+        "includeCustomFormatWhenRenaming": bool(cf.get("includeCustomFormatWhenRenaming", False)),
+        "specifications": specs,
+    }
+
+
+def _cf_signature(cf: dict[str, Any]) -> tuple[Any, ...]:
+    norm = normalize_cf_payload(cf)
+    spec_sigs = tuple(
+        (
+            s["name"],
+            s["implementation"],
+            s["negate"],
+            s["required"],
+            tuple(sorted((f["name"], repr(f.get("value"))) for f in s["fields"])),
+        )
+        for s in norm["specifications"]
+    )
+    return (norm["name"].strip().lower(), norm["includeCustomFormatWhenRenaming"], spec_sigs)
+
+
+def _profile_items_signature(items: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    sig: list[tuple[Any, ...]] = []
+    for it in items or []:
+        q = it.get("quality") or {}
+        sub = tuple((s.get("quality") or {}).get("name") or s.get("name") for s in (it.get("items") or []))
+        sig.append((q.get("name") or it.get("name"), bool(it.get("allowed", False)), sub))
+    return sig
+
+
+def _profile_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    for key in ("upgradeAllowed", "cutoff", "minFormatScore", "cutoffFormatScore", "minUpgradeFormatScore"):
+        if key in desired and existing.get(key) != desired.get(key):
+            return False
+    if "items" in desired:
+        if _profile_items_signature(existing.get("items") or []) != _profile_items_signature(desired["items"]):
+            return False
+    if "formatItems" in desired:
+        ex_scores = {
+            int(f["format"]): int(f.get("score", 0))
+            for f in (existing.get("formatItems") or [])
+            if isinstance(f, dict) and f.get("format") is not None
+        }
+        des_scores = {
+            int(f["format"]): int(f.get("score", 0))
+            for f in (desired.get("formatItems") or [])
+            if isinstance(f, dict) and f.get("format") is not None
+        }
+        if ex_scores != des_scores:
+            return False
+    return True
+
+
 # ---------------------------------------------------------------- base classes
 
 
