@@ -10,6 +10,8 @@ def test_catalog_contains_all_services() -> None:
         ServiceKind.sonarr,
         ServiceKind.prowlarr,
         ServiceKind.qbittorrent,
+        ServiceKind.sabnzbd,
+        ServiceKind.nzbget,
         ServiceKind.bazarr,
         ServiceKind.jellyfin,
         ServiceKind.plex,

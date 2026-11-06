@@ -114,7 +114,8 @@ async def _wire_arr_basics(db: AsyncSession, job: Job) -> None:
                         username=dl_svc.username, password=decrypt(dl_svc.password_enc) or None,
                         category=category, use_ssl=ssl,
                     )
-            job.ok(s, f"Downloads for {name} go through {dl_name} to {torrent_path if dl_kind == ServiceKind.qbittorrent else save_path}")
+            dest = torrent_path if dl_kind == ServiceKind.qbittorrent else save_path
+            job.ok(s, f"Downloads for {name} go through {dl_name} to {dest}")
         except Exception as exc:  # noqa: BLE001
             job.fail(s, exc)
 

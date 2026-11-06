@@ -11,7 +11,6 @@ from typing import Any, ClassVar
 from app.adapters._arr_common import failed_status, parse_json
 from app.adapters.base import (
     BaseAdapter,
-    Connection,
     HealthStatus,
     QueueItem,
     ServiceKind,
