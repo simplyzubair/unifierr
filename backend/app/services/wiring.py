@@ -5,6 +5,7 @@ wizard's "Connect everything" button can be pressed again safely.
 """
 from __future__ import annotations
 
+import re
 import secrets
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from app.services.common import (
     USENET_TV,
     adapter_for,
     get_service,
+    get_services,
     get_setting,
     internal_host_port,
     log_event,
@@ -46,6 +48,19 @@ def _internal_url(svc) -> str:
     return (svc.internal_url or svc.base_url).rstrip("/")
 
 
+def _instance_category(svc, kind: ServiceKind, *, default: bool) -> tuple[str, str]:
+    category, save_path = ARR_CATEGORIES[kind]
+    if default:
+        return category, save_path
+    # Categories are how each *arr recognizes its own download-client downloads.
+    # Never make a 1080p and a 4K instance share one category.
+    label = svc.name.strip().lower()
+    if label.startswith(f"{kind.value} "):
+        label = label[len(kind.value) + 1:]
+    slug = re.sub(r"[^a-z0-9]+", "-", label).strip("-") or "instance"
+    return f"{category}-{slug}-{svc.id}", save_path
+
+
 async def _selected_download_client(db: AsyncSession) -> tuple[ServiceKind | None, Service | None]:
     """The download client the user picked in the wizard, falling back to whichever is connected."""
     choice = await get_setting(db, "download_client")
@@ -65,85 +80,93 @@ async def _selected_download_client(db: AsyncSession) -> tuple[ServiceKind | Non
     return None, None
 
 
-async def _wire_arr_basics(db: AsyncSession, job: Job) -> None:
+async def _wire_arr_basics(db: AsyncSession, job: Job) -> dict[int, list[str]]:
+    roots_by_service: dict[int, list[str]] = {}
     dl_kind, dl_svc = await _selected_download_client(db)
     dl_name = CLIENT_DISPLAY.get(dl_kind, "a download client") if dl_kind else None
     for kind, root in ((ServiceKind.radarr, MOVIES_PATH), (ServiceKind.sonarr, TV_PATH)):
-        name = kind.value.capitalize()
-        svc = await get_service(db, kind)
-        s = job.step(f"Set {name} media folder")
-        if svc is None:
-            job.skip(s, f"{name} is not connected.")
+        instances = await get_services(db, kind)
+        if not instances:
+            name = kind.value.capitalize()
+            job.skip(job.step(f"Set {name} media folder"), f"{name} is not connected.")
             continue
-        try:
-            async with adapter_for(db, kind) as arr:
-                existing = [f.get("path") for f in await arr.root_folders() if f.get("path")]
-                if not svc.managed and existing and root not in existing:
-                    # Never change an existing setup: keep the folders the user already has.
-                    job.skip(s, f"Kept your existing {name} media folder: {existing[0]}")
-                    continue
-                await arr.ensure_root_folder(root)
-            job.ok(s, f"{name} saves to {root}")
-        except Exception as exc:  # noqa: BLE001
-            job.fail(s, exc)
+        for index, svc in enumerate(instances):
+            name = kind.value.capitalize() if len(instances) == 1 else svc.name
+            s = job.step(f"Set {name} media folder")
+            try:
+                async with adapter_for(db, kind, service_id=svc.id) as arr:
+                    existing = [f.get("path") for f in await arr.root_folders() if f.get("path")]
+                    if not svc.managed and existing and root not in existing:
+                        # Never change an existing setup: keep the folders the user already has.
+                        roots_by_service[svc.id] = existing
+                        job.skip(s, f"Kept your existing {name} media folder: {existing[0]}")
+                    else:
+                        await arr.ensure_root_folder(root)
+                        roots_by_service[svc.id] = [*existing, root] if root not in existing else existing
+                        job.ok(s, f"{name} saves to {root}")
+            except Exception as exc:  # noqa: BLE001
+                job.fail(s, exc)
 
-        s = job.step(f"Connect {name} to {dl_name or 'a download client'}")
-        if dl_svc is None or dl_kind is None:
-            job.skip(s, "No download client (qBittorrent, SABnzbd or NZBGet) is connected.")
-            continue
-        category, torrent_path = ARR_CATEGORIES[kind]
-        try:
-            host, port, ssl = internal_host_port(dl_svc, DEFAULT_PORTS[dl_kind])
-            if dl_kind == ServiceKind.qbittorrent:
-                async with adapter_for(db, ServiceKind.qbittorrent) as q:
-                    await q.ensure_category(category, torrent_path)
-                async with adapter_for(db, kind) as arr:
-                    await arr.ensure_qbittorrent_client(
-                        host=host, port=port, username=dl_svc.username or "",
-                        password=decrypt(dl_svc.password_enc) or "", category=category, use_ssl=ssl,
-                    )
-            else:
-                # Usenet: the same categories, but downloads land in /data/usenet/…
-                save_path = USENET_SAVE_PATHS[kind]
-                async with adapter_for(db, dl_kind) as dl:
-                    await dl.ensure_category(category, save_path)
-                async with adapter_for(db, kind) as arr:
-                    await arr.ensure_usenet_client(
-                        client=dl_kind.value, host=host, port=port,
-                        api_key=decrypt(dl_svc.api_key_enc) if dl_svc.api_key_enc else None,
-                        username=dl_svc.username, password=decrypt(dl_svc.password_enc) or None,
-                        category=category, use_ssl=ssl,
-                    )
-            dest = torrent_path if dl_kind == ServiceKind.qbittorrent else save_path
-            job.ok(s, f"Downloads for {name} go through {dl_name} to {dest}")
-        except Exception as exc:  # noqa: BLE001
-            job.fail(s, exc)
+            s = job.step(f"Connect {name} to {dl_name or 'a download client'}")
+            if dl_svc is None or dl_kind is None:
+                job.skip(s, "No download client (qBittorrent, SABnzbd or NZBGet) is connected.")
+                continue
+            category, torrent_path = _instance_category(svc, kind, default=index == 0)
+            try:
+                host, port, ssl = internal_host_port(dl_svc, DEFAULT_PORTS[dl_kind])
+                if dl_kind == ServiceKind.qbittorrent:
+                    async with adapter_for(db, ServiceKind.qbittorrent) as q:
+                        await q.ensure_category(category, torrent_path)
+                    async with adapter_for(db, kind, service_id=svc.id) as arr:
+                        await arr.ensure_qbittorrent_client(
+                            host=host, port=port, username=dl_svc.username or "",
+                            password=decrypt(dl_svc.password_enc) or "", category=category, use_ssl=ssl,
+                        )
+                    dest = torrent_path
+                else:
+                    save_path = USENET_SAVE_PATHS[kind]
+                    async with adapter_for(db, dl_kind) as dl:
+                        await dl.ensure_category(category, save_path)
+                    async with adapter_for(db, kind, service_id=svc.id) as arr:
+                        await arr.ensure_usenet_client(
+                            client=dl_kind.value, host=host, port=port,
+                            api_key=decrypt(dl_svc.api_key_enc) if dl_svc.api_key_enc else None,
+                            username=dl_svc.username, password=decrypt(dl_svc.password_enc) or None,
+                            category=category, use_ssl=ssl,
+                        )
+                    dest = save_path
+                job.ok(s, f"Downloads for {name} go through {dl_name} to {dest}")
+            except Exception as exc:  # noqa: BLE001
+                job.fail(s, exc)
+    return roots_by_service
 
 
 async def _wire_prowlarr(db: AsyncSession, job: Job) -> None:
     prowlarr = await get_service(db, ServiceKind.prowlarr)
-    app_ids: dict[ServiceKind, int] = {}
+    app_ids: dict[int, int] = {}
     for kind in (ServiceKind.radarr, ServiceKind.sonarr):
-        name = kind.value.capitalize()
-        s = job.step(f"Share indexers with {name}")
-        svc = await get_service(db, kind)
-        if prowlarr is None:
-            job.skip(s, "Prowlarr is not connected.")
+        instances = await get_services(db, kind)
+        if not instances:
+            name = kind.value.capitalize()
+            job.skip(job.step(f"Share indexers with {name}"), f"{name} is not connected.")
             continue
-        if svc is None:
-            job.skip(s, f"{name} is not connected.")
-            continue
-        try:
-            async with adapter_for(db, ServiceKind.prowlarr) as p:
-                app = await p.ensure_application(
-                    kind=kind.value, app_url=_internal_url(svc), app_api_key=decrypt(svc.api_key_enc) or "",
-                    prowlarr_url=_internal_url(prowlarr),
-                )
-                if isinstance(app, dict) and app.get("id") is not None:
-                    app_ids[kind] = int(app["id"])
-            job.ok(s, f"Indexers you add in Unifierr are copied to {name} automatically.")
-        except Exception as exc:  # noqa: BLE001
-            job.fail(s, exc)
+        for svc in instances:
+            name = kind.value.capitalize() if len(instances) == 1 else svc.name
+            s = job.step(f"Share indexers with {name}")
+            if prowlarr is None:
+                job.skip(s, "Prowlarr is not connected.")
+                continue
+            try:
+                async with adapter_for(db, ServiceKind.prowlarr) as p:
+                    app = await p.ensure_application(
+                        kind=kind.value, app_url=_internal_url(svc), app_api_key=decrypt(svc.api_key_enc) or "",
+                        prowlarr_url=_internal_url(prowlarr), app_name=svc.name,
+                    )
+                    if isinstance(app, dict) and app.get("id") is not None:
+                        app_ids[svc.id] = int(app["id"])
+                job.ok(s, f"Indexers you add in Unifierr are copied to {name} automatically.")
+            except Exception as exc:  # noqa: BLE001
+                job.fail(s, exc)
 
     # Verify the Prowlarr -> *arr sync actually carries Usenet indexers over.
     s = job.step("Copy Usenet indexers to Radarr and Sonarr")

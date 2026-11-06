@@ -112,14 +112,14 @@ class ProwlarrAdapter(ArrBase):
         return out
 
     async def ensure_application(self, *, kind: str, app_url: str, app_api_key: str,
-                                 prowlarr_url: str) -> dict[str, Any]:
+                                 prowlarr_url: str, app_name: str | None = None) -> dict[str, Any]:
         kind = str(kind).lower()
         if kind not in ("radarr", "sonarr"):
             raise ServiceUnavailable(f"Unsupported application: {kind}")
         return await self._ensure_provider(
             "applications", implementation=kind.capitalize(), match_field="baseUrl", match_value=app_url,
             values={"prowlarrUrl": prowlarr_url, "baseUrl": app_url, "apiKey": app_api_key},
-            top={"name": kind.capitalize(), "syncLevel": "fullSync", "tags": []},
+            top={"name": app_name or kind.capitalize(), "syncLevel": "fullSync", "tags": []},
         )
 
     async def sync_application(self, app_id: int) -> None:

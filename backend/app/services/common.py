@@ -73,8 +73,33 @@ async def log_event(db: AsyncSession, source: str, message: str, level: str = "i
     await db.commit()
 
 
-async def get_service(db: AsyncSession, kind: ServiceKind | str) -> Service | None:
-    return (await db.execute(select(Service).where(Service.kind == str(kind)))).scalar_one_or_none()
+async def get_services(
+    db: AsyncSession, kind: ServiceKind | str, *, enabled_only: bool = False
+) -> list[Service]:
+    """Return every instance of a kind in stable default-first (oldest first) order."""
+    stmt = select(Service).where(Service.kind == str(kind)).order_by(Service.id)
+    if enabled_only:
+        stmt = stmt.where(Service.enabled.is_(True))
+    return list((await db.execute(stmt)).scalars())
+
+
+async def get_service(
+    db: AsyncSession,
+    kind: ServiceKind | str,
+    name: str | None = None,
+    *,
+    service_id: int | None = None,
+) -> Service | None:
+    """Resolve one instance, or the original/oldest instance when no selector is given."""
+    if service_id is not None:
+        if name is not None:
+            raise ValueError("Select a service by name or id, not both")
+        svc = await db.get(Service, service_id)
+        return svc if svc is not None and svc.kind == str(kind) else None
+    stmt = select(Service).where(Service.kind == str(kind)).order_by(Service.id)
+    if name is not None:
+        stmt = stmt.where(Service.name == name)
+    return (await db.execute(stmt)).scalars().first()
 
 
 def connection_for(svc: Service) -> Connection:
@@ -94,18 +119,28 @@ def make_adapter(conn: Connection) -> BaseAdapter:
 
 
 @asynccontextmanager
-async def adapter_for(db: AsyncSession, kind: ServiceKind | str, *, required: bool = True):
-    """Yield a ready adapter for a connected app, or None when `required` is False and it is missing."""
-    svc = await get_service(db, kind)
+async def adapter_for(
+    db: AsyncSession,
+    kind: ServiceKind | str,
+    name: str | None = None,
+    *,
+    service_id: int | None = None,
+    required: bool = True,
+):
+    """Yield an adapter for one instance, defaulting to the first enabled instance."""
+    svc = await get_service(db, kind, name, service_id=service_id)
+    if svc is not None and not svc.enabled and name is None and service_id is None:
+        # A disabled original instance must not hide a usable additional one.
+        svc = next(iter(await get_services(db, kind, enabled_only=True)), svc)
     if svc is None or not svc.enabled:
         if not required:
             yield None
             return
-        name = str(kind).capitalize()
+        display = svc.name if svc is not None else name or str(kind).capitalize()
         raise UnifierrError(
-            f"{name} is not connected",
-            explanation=f"This feature needs {name}, but Unifierr is not connected to it yet.",
-            fix="Open Settings → Setup wizard and add or install it.",
+            f"{display} is not connected",
+            explanation=f"This feature needs {display}, but Unifierr is not connected to it yet.",
+            fix="Open Settings → Apps and add or enable it, or run the Setup wizard.",
             status_code=409,
         )
     adapter = make_adapter(connection_for(svc))

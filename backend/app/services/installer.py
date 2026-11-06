@@ -75,10 +75,12 @@ async def wait_for_file_key(reader, config_dir: str, max_wait: float = 90) -> st
 
 async def save_service(db: AsyncSession, kind: ServiceKind, *, base_url: str, internal_url: str | None = None,
                        api_key: str | None = None, username: str | None = None, password: str | None = None,
-                       managed: bool = False, container_name: str | None = None) -> Service:
-    svc = await get_service(db, kind)
+                       managed: bool = False, container_name: str | None = None,
+                       name: str | None = None) -> Service:
+    name = name.strip() if name else None
+    svc = await get_service(db, kind, name)
     if svc is None:
-        svc = Service(kind=kind.value, name=DISPLAY[kind])
+        svc = Service(kind=kind.value, name=name or DISPLAY[kind])
         db.add(svc)
     svc.base_url = base_url.rstrip("/")
     svc.internal_url = (internal_url or base_url).rstrip("/")
@@ -271,7 +273,8 @@ QBIT_TEMP_PW = re.compile(r"temporary password is provided for this session:\s*(
 
 
 async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, api_key: str | None,
-                username: str | None, password: str | None) -> Service:
+                username: str | None, password: str | None, name: str | None = None,
+                internal_url: str | None = None) -> Service:
     """Connect an app that already exists. Reads credentials from its config files when possible."""
     from app.deploy import keys
 
@@ -343,9 +346,10 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
                             explanation=status.issues[0].explanation if status.issues else None,
                             fix=status.issues[0].fix if status.issues else
                             "Check the address and credentials under Advanced.")
-    svc = await save_service(db, kind, base_url=base_url, api_key=api_key, username=username, password=password,
-                             managed=False, container_name=container_name)
-    await log_event(db, "setup", f"Connected existing {DISPLAY[kind]} at {base_url}.")
+    svc = await save_service(db, kind, base_url=base_url, internal_url=internal_url, api_key=api_key,
+                             username=username, password=password, managed=False, container_name=container_name,
+                             name=name)
+    await log_event(db, "setup", f"Connected existing {svc.name} at {base_url}.")
     return svc
 
 

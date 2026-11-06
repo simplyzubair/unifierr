@@ -2,7 +2,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -34,8 +34,12 @@ class Service(Base):
     """One connected external app (Radarr, Sonarr, Prowlarr, qBittorrent, Bazarr, Jellyfin, Plex)."""
 
     __tablename__ = "services"
+    __table_args__ = (
+        UniqueConstraint("kind", "name", name="uq_service_kind_name"),
+        CheckConstraint("length(trim(name)) > 0", name="ck_service_name_nonempty"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    kind: Mapped[str] = mapped_column(String(32), unique=True, index=True)  # one per kind in v1
+    kind: Mapped[str] = mapped_column(String(32), index=True)
     name: Mapped[str] = mapped_column(String(64))
     base_url: Mapped[str] = mapped_column(String(255))  # how Unifierr reaches it
     internal_url: Mapped[str | None] = mapped_column(String(255), nullable=True)  # how other apps reach it
@@ -57,9 +61,14 @@ class Setting(Base):
 
 class MediaRequest(Base):
     __tablename__ = "media_requests"
-    __table_args__ = (UniqueConstraint("media_type", "tmdb_id", "tvdb_id", name="uq_request_media"),)
+    __table_args__ = (UniqueConstraint("service_id", "media_type", "tmdb_id", "tvdb_id", name="uq_request_media"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    service_id: Mapped[int | None] = mapped_column(
+        ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Keep the label after a service is forgotten, and for requests created before multi-instance support.
+    service_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     media_type: Mapped[str] = mapped_column(String(16))  # movie | series
     tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tvdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
