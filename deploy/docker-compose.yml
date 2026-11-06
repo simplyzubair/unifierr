@@ -1,0 +1,43 @@
+services:
+  unifierr:
+    image: ghcr.io/simplyzubair/unifierr:latest
+    container_name: unifierr
+    restart: unless-stopped
+    ports:
+      # Port 8484 is the Unifierr web interface.
+      # Access Unifierr at http://<your-server-ip>:8484
+      - "8484:8484"
+    environment:
+      # Storage root path on your host system.
+      # All downloads, media, and app configurations live here.
+      - UNIFIERR_ROOT=${UNIFIERR_ROOT:-/srv/unifierr}
+      # User ID and Group ID that will own newly created folders and files.
+      # Run 'id' in your terminal to find your user's UID and GID (typically 1000).
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Timezone for logging and schedule management (e.g. America/New_York, UTC).
+      - TZ=${TZ:-UTC}
+    volumes:
+      # 1. Config directory for Unifierr's internal database and settings.
+      - ./config:/config
+      # 2. Docker socket: allows Unifierr to create, start, and monitor your media apps.
+      #    This gives Unifierr full control over Docker. For a stricter setup, see
+      #    docs/INSTALL.md -> "Optional: Docker socket proxy".
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 3. Storage Root: Mounted at the exact same path inside and outside the container.
+      # This ensures all media apps (Radarr, Sonarr, qBittorrent) reference the identical
+      # paths, allowing instant hardlinks without copying data.
+      - ${UNIFIERR_ROOT:-/srv/unifierr}:${UNIFIERR_ROOT:-/srv/unifierr}
+    extra_hosts:
+      # Lets Unifierr find apps that run directly on this computer (outside Docker).
+      - "host.docker.internal:host-gateway"
+    networks:
+      - unifierr
+
+networks:
+  # Shared internal Docker bridge network.
+  # All installed media stack containers join this network so they can
+  # communicate securely using their container names (e.g. http://radarr:7878).
+  unifierr:
+    name: unifierr
+    driver: bridge
