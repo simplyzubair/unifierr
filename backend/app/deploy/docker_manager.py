@@ -413,12 +413,23 @@ class DockerManager:
             progress(f"{spec.display_name} installed and started.")
         return self._to_container_info(container)
 
+    @staticmethod
+    def _assert_managed(c: Any, name: str) -> None:
+        """Second safety net: never start/stop/restart a container Unifierr did not create."""
+        labels = getattr(c, "labels", None) or (getattr(c, "attrs", {}) or {}).get("Config", {}).get("Labels") or {}
+        if labels.get("io.unifierr.managed") != "true":
+            raise UnifierrError(f"Container '{name}' is not managed by Unifierr",
+                                explanation="Unifierr only starts, stops or restarts containers it installed.")
+
     def start(self, name: str) -> None:
         if not self.available():
             raise UnifierrError("Docker is not available", explanation=self.error())
         try:
             c = self.client.containers.get(name)
+            self._assert_managed(c, name)
             c.start()
+        except UnifierrError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise UnifierrError(f"Failed to start container '{name}': {exc}") from exc
 
@@ -427,7 +438,10 @@ class DockerManager:
             raise UnifierrError("Docker is not available", explanation=self.error())
         try:
             c = self.client.containers.get(name)
+            self._assert_managed(c, name)
             c.stop()
+        except UnifierrError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise UnifierrError(f"Failed to stop container '{name}': {exc}") from exc
 
@@ -436,7 +450,10 @@ class DockerManager:
             raise UnifierrError("Docker is not available", explanation=self.error())
         try:
             c = self.client.containers.get(name)
+            self._assert_managed(c, name)
             c.restart()
+        except UnifierrError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise UnifierrError(f"Failed to restart container '{name}': {exc}") from exc
 

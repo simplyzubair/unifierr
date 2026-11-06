@@ -43,6 +43,14 @@ def _require_container(svc: Service) -> str:
     return svc.container_name
 
 
+def _require_managed(svc: Service, action: str) -> None:
+    if not svc.managed:
+        raise UnifierrError(f"{svc.name} was not installed by Unifierr",
+                            explanation=f"To avoid breaking your existing setup, Unifierr can only {action} "
+                                        "apps it installed itself.",
+                            fix=f"Manage {svc.name} the way you installed it (e.g. your NAS app store).")
+
+
 @router.get("/services", response_model=list[ServiceOut])
 async def list_services(db: AsyncSession = Depends(get_db)):
     rows = list((await db.execute(select(Service).order_by(Service.id))).scalars())
@@ -95,6 +103,7 @@ async def forget_service(service_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/services/{service_id}/restart", status_code=202)
 async def restart_service(service_id: int, db: AsyncSession = Depends(get_db)):
     svc = await _get(db, service_id)
+    _require_managed(svc, "restart")
     await run_in_threadpool(docker_manager().restart, _require_container(svc))
     await log_event(db, "services", f"Restarted {svc.name}.")
     return {"ok": True}
@@ -104,11 +113,7 @@ async def restart_service(service_id: int, db: AsyncSession = Depends(get_db)):
 async def update_service(service_id: int, db: AsyncSession = Depends(get_db)):
     svc = await _get(db, service_id)
     name = _require_container(svc)
-    if not svc.managed:
-        raise UnifierrError(f"{svc.name} was not installed by Unifierr",
-                            explanation="To avoid breaking your existing setup, "
-                                        "Unifierr only updates apps it installed.",
-                            fix=f"Update {svc.name} the way you installed it (e.g. your NAS app store).")
+    _require_managed(svc, "update")
     display = svc.name
 
     async def run(job: Job):

@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -22,6 +24,7 @@ from app.models import User
 from app.services.common import get_setting
 
 router = APIRouter()
+_bootstrap_lock = asyncio.Lock()
 
 
 class Credentials(BaseModel):
@@ -77,11 +80,14 @@ async def setup_status(db: AsyncSession = Depends(get_db)) -> dict:
 @router.post("/auth/bootstrap", response_model=UserOut)
 async def bootstrap(body: Credentials, response: Response, db: AsyncSession = Depends(get_db)):
     validate_new_password(body.password)
-    if (await db.execute(select(func.count(User.id)))).scalar_one() > 0:
-        raise HTTPException(409, detail="An admin account already exists. Please sign in.")
-    user = User(username=body.username, password_hash=hash_password(body.password), role="admin")
-    db.add(user)
-    await db.commit()
+    password_hash = hash_password(body.password)  # slow; do it outside the lock
+    # One lock + re-check: two simultaneous first-run requests can never both create an admin.
+    async with _bootstrap_lock:
+        if (await db.execute(select(func.count(User.id)))).scalar_one() > 0:
+            raise HTTPException(409, detail="An admin account already exists. Please sign in.")
+        user = User(username=body.username, password_hash=password_hash, role="admin")
+        db.add(user)
+        await db.commit()
     _set_cookie(response, await create_session(db, user))
     return _out(user)
 

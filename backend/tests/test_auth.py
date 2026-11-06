@@ -96,3 +96,11 @@ def test_every_api_route_requires_sign_in_unless_public():
                    if getattr(r, "path", "").startswith("/api/") and r.path not in public
                    and not any(c in (current_user, require_admin) for c in calls(r.dependant))]
     assert unprotected == []
+
+
+async def test_concurrent_bootstrap_creates_only_one_admin(client):
+    import asyncio
+
+    bodies = [{"username": f"admin{i}", "password": "correct-horse-1"} for i in range(5)]
+    results = await asyncio.gather(*(client.post("/api/auth/bootstrap", json=b, headers=CSRF) for b in bodies))
+    assert sorted(r.status_code for r in results) == [200, 409, 409, 409, 409]

@@ -179,3 +179,13 @@ def test_install_port_clash_removes_half_created_container() -> None:
         dm.install(CATALOG[ServiceKind.qbittorrent], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC")
     assert "8080" in err.value.message and err.value.fix
     created.remove.assert_called_once_with(force=True)
+
+
+def test_restart_refuses_unmanaged_container() -> None:
+    mock_client = MagicMock()
+    c = MagicMock()
+    c.labels = {}
+    mock_client.containers.get.return_value = c
+    with pytest.raises(UnifierrError):
+        DockerManager(client=mock_client).restart("someones-radarr")
+    c.restart.assert_not_called()
