@@ -6,7 +6,7 @@ import { ErrorCard } from '@/components/common/ErrorCard';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { TableSkeleton } from '@/components/common/Skeleton';
-import type { ServiceOut, User, HealthStatus, Job } from '@/types/api';
+import type { ServiceOut, User, HealthStatus, Job, SystemSettings } from '@/types/api';
 import {
   Settings as SettingsIcon,
   Layers,
@@ -22,9 +22,10 @@ import {
   Trash2,
   Plus,
   Wand2,
+  Shield,
 } from 'lucide-react';
 
-type SettingsTab = 'apps' | 'users' | 'account' | 'backup' | 'remote' | 'about';
+type SettingsTab = 'apps' | 'network' | 'users' | 'account' | 'backup' | 'remote' | 'about';
 
 export const Settings: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -63,6 +64,17 @@ export const Settings: React.FC = () => {
   // Update container image job polling
   const [updateJobModal, setUpdateJobModal] = useState<Job | null>(null);
 
+  // ---------------- NETWORK TAB ----------------
+  const [networkSettings, setNetworkSettings] = useState<SystemSettings | null>(null);
+  const [networkForm, setNetworkForm] = useState({
+    vpn_enabled: false,
+    vpn_provider: '',
+    vpn_type: 'openvpn' as 'openvpn' | 'wireguard',
+    vpn_server_countries: '',
+  });
+  const [networkSecrets, setNetworkSecrets] = useState({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
+  const [networkSaving, setNetworkSaving] = useState(false);
+
   // ---------------- USERS TAB ----------------
   const [usersList, setUsersList] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -86,7 +98,46 @@ export const Settings: React.FC = () => {
     setSuccessMsg(null);
     if (activeTab === 'apps') loadServices();
     if (activeTab === 'users' && isAdmin) loadUsers();
+    if (activeTab === 'network' && isAdmin) loadNetworkSettings();
   }, [activeTab]);
+
+  const loadNetworkSettings = async () => {
+    try {
+      const settings = await systemApi.getSettings();
+      setNetworkSettings(settings);
+      setNetworkForm({
+        vpn_enabled: settings.vpn_enabled ?? false,
+        vpn_provider: settings.vpn_provider ?? '',
+        vpn_type: settings.vpn_type ?? 'openvpn',
+        vpn_server_countries: settings.vpn_server_countries ?? '',
+      });
+    } catch (err: unknown) {
+      setError(err as Error);
+    }
+  };
+
+  const handleSaveNetwork = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setNetworkSaving(true);
+    setError(null);
+    try {
+      const settings = await systemApi.updateSettings({
+        ...networkForm,
+        ...(networkSecrets.vpn_username ? { vpn_username: networkSecrets.vpn_username } : {}),
+        ...(networkSecrets.vpn_password ? { vpn_password: networkSecrets.vpn_password } : {}),
+        ...(networkSecrets.wireguard_private_key
+          ? { wireguard_private_key: networkSecrets.wireguard_private_key }
+          : {}),
+      });
+      setNetworkSettings(settings);
+      setNetworkSecrets({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
+      setSuccessMsg('Network settings saved. VPN credentials are stored encrypted.');
+    } catch (err: unknown) {
+      setError(err as Error);
+    } finally {
+      setNetworkSaving(false);
+    }
+  };
 
   const loadServices = async () => {
     setServicesLoading(true);
@@ -355,6 +406,20 @@ export const Settings: React.FC = () => {
         {isAdmin && (
           <button
             type="button"
+            onClick={() => setActiveTab('network')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+              activeTab === 'network'
+                ? 'bg-white text-brand-700 shadow-xs dark:bg-slate-900 dark:text-brand-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <Shield className="h-3.5 w-3.5" /> Network & VPN
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
+            type="button"
             onClick={() => setActiveTab('users')}
             className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
               activeTab === 'users'
@@ -578,6 +643,79 @@ export const Settings: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'network' && isAdmin && (
+        <form onSubmit={handleSaveNetwork} className="max-w-2xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-6 shadow-xs">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">VPN routing</h2>
+            <p className="mt-1 text-xs text-slate-500">New qBittorrent and Prowlarr containers can share Gluetun's VPN network. Existing containers and their configuration are never changed automatically.</p>
+          </div>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={networkForm.vpn_enabled}
+              onChange={(event) => setNetworkForm({ ...networkForm, vpn_enabled: event.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">Route downloads through VPN</span>
+          </label>
+
+          {networkForm.vpn_enabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                VPN provider (Gluetun name)
+                <input
+                  type="text"
+                  required
+                  value={networkForm.vpn_provider}
+                  onChange={(event) => setNetworkForm({ ...networkForm, vpn_provider: event.target.value })}
+                  placeholder="e.g. protonvpn"
+                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                />
+              </label>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                VPN type
+                <select
+                  value={networkForm.vpn_type}
+                  onChange={(event) => setNetworkForm({ ...networkForm, vpn_type: event.target.value === 'wireguard' ? 'wireguard' : 'openvpn' })}
+                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                >
+                  <option value="openvpn">OpenVPN</option>
+                  <option value="wireguard">WireGuard</option>
+                </select>
+              </label>
+              {networkForm.vpn_type === 'openvpn' ? (
+                <>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    VPN username {networkSettings?.vpn_has_openvpn_credentials && <span className="font-normal">(saved; leave blank to keep)</span>}
+                    <input type="text" autoComplete="off" value={networkSecrets.vpn_username} onChange={(event) => setNetworkSecrets({ ...networkSecrets, vpn_username: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm" />
+                  </label>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    VPN password {networkSettings?.vpn_has_openvpn_credentials && <span className="font-normal">(saved; leave blank to keep)</span>}
+                    <input type="password" autoComplete="new-password" value={networkSecrets.vpn_password} onChange={(event) => setNetworkSecrets({ ...networkSecrets, vpn_password: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm" />
+                  </label>
+                </>
+              ) : (
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 sm:col-span-2">
+                  WireGuard private key {networkSettings?.vpn_has_wireguard_key && <span className="font-normal">(saved; leave blank to keep)</span>}
+                  <input type="password" autoComplete="new-password" value={networkSecrets.wireguard_private_key} onChange={(event) => setNetworkSecrets({ ...networkSecrets, wireguard_private_key: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm" />
+                </label>
+              )}
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 sm:col-span-2">
+                Server countries (optional)
+                <input type="text" value={networkForm.vpn_server_countries} onChange={(event) => setNetworkForm({ ...networkForm, vpn_server_countries: event.target.value })} placeholder="e.g. Switzerland" className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm" />
+              </label>
+              <p className="text-xs text-slate-500 sm:col-span-2">Credentials are encrypted at rest. Use the exact provider name supported by Gluetun. Changing these settings does not rewrite an existing VPN container.</p>
+            </div>
+          )}
+
+          <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-4">
+            <button type="submit" disabled={networkSaving} className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold px-4 py-2 text-xs disabled:opacity-50">
+              {networkSaving ? 'Saving…' : 'Save Network Settings'}
+            </button>
+          </div>
+        </form>
       )}
 
       {/* ---------------- USERS TAB CONTENT ---------------- */}

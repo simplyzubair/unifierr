@@ -32,6 +32,7 @@ class ContainerInfo(BaseModel):
     networks: list[str]
     mounts: list[dict]  # [{source, destination}]
     labels: dict[str, str]
+    network_mode: str | None = None
 
 
 class DockerManager:
@@ -168,6 +169,9 @@ class DockerManager:
         network_settings = attrs.get("NetworkSettings", {})
         if not isinstance(network_settings, dict):
             network_settings = {}
+        host_config = attrs.get("HostConfig", {})
+        if not isinstance(host_config, dict):
+            host_config = {}
 
         # Resolve image string
         image_name = ""
@@ -253,6 +257,7 @@ class DockerManager:
             networks=networks,
             mounts=mounts,
             labels=labels,
+            network_mode=host_config.get("NetworkMode"),
         )
 
     def ensure_network(self, name: str = "unifierr") -> None:
@@ -299,6 +304,8 @@ class DockerManager:
         pgid: int,
         tz: str,
         host_port: int | None = None,
+        env_overrides: dict[str, str] | None = None,
+        network_mode: str | None = None,
         progress: Callable[[str], None] | None = None,
     ) -> ContainerInfo:
         """Pull an image and create a managed container with standard labels and mounts.
@@ -361,11 +368,17 @@ class DockerManager:
         env: dict[str, str] = {}
         for k, v in spec.env.items():
             env[k] = v.format(puid=puid, pgid=pgid, tz=tz)
+        env.update(env_overrides or {})
 
         # 6. Ports
         port_to_bind = host_port or spec.default_host_port
-        ports: dict[str, Any] = {f"{spec.internal_port}/tcp": port_to_bind}
-        if spec.kind == ServiceKind.qbittorrent:
+        if spec.kind == ServiceKind.gluetun:
+            ports: dict[str, Any] = dict(spec.published_ports)
+        elif network_mode:
+            ports = {}
+        else:
+            ports = {f"{spec.internal_port}/tcp": port_to_bind}
+        if spec.kind == ServiceKind.qbittorrent and not network_mode:
             ports["6881/tcp"] = 6881
             ports["6881/udp"] = 6881
 
@@ -379,16 +392,22 @@ class DockerManager:
         # retry is possible (it is ours, it never held user data).
         container = None
         try:
-            container = self.client.containers.create(
-                image=spec.image,
-                name=spec.container_name,
-                environment=env,
-                volumes=volumes,
-                ports=ports,
-                restart_policy={"Name": "unless-stopped"},
-                labels=labels,
-                network="unifierr",
-            )
+            create_options: dict[str, Any] = {
+                "image": spec.image,
+                "name": spec.container_name,
+                "environment": env,
+                "volumes": volumes,
+                "ports": ports,
+                "restart_policy": {"Name": "unless-stopped"},
+                "labels": labels,
+                "cap_add": spec.cap_add or None,
+                "devices": spec.devices or None,
+            }
+            if network_mode:
+                create_options["network_mode"] = network_mode
+            else:
+                create_options["network"] = "unifierr"
+            container = self.client.containers.create(**create_options)
             container.start()
         except Exception as exc:  # noqa: BLE001
             if container is not None:
@@ -403,9 +422,13 @@ class DockerManager:
                     fix=f"If you already run {spec.display_name}, connect it instead of installing it. "
                         "Otherwise stop the program using that port and press Retry.",
                 ) from exc
+            safe_error = str(exc)
+            for secret in (env_overrides or {}).values():
+                if secret:
+                    safe_error = safe_error.replace(secret, "[redacted]")
             raise UnifierrError(
                 f"Failed to start container '{spec.container_name}'",
-                explanation=f"Docker failed to start '{spec.container_name}': {exc}",
+                explanation=f"Docker failed to start '{spec.container_name}': {safe_error}",
                 fix="Check Docker logs or inspect port conflicts.",
             ) from exc
 
@@ -550,6 +573,9 @@ class DockerManager:
         binds = host_config.get("Binds", [])
         port_bindings = host_config.get("PortBindings", {})
         restart_policy = host_config.get("RestartPolicy") or {"Name": "unless-stopped"}
+        cap_add = host_config.get("CapAdd")
+        devices = host_config.get("Devices")
+        network_mode = host_config.get("NetworkMode")
 
         networks = list(network_settings.get("Networks", {}).keys())
         primary_net = networks[0] if networks else "unifierr"
@@ -591,19 +617,26 @@ class DockerManager:
         try:
             if progress:
                 progress(f"Recreating container {name}...")
-            new_c = self.client.containers.create(
-                image=image_name,
-                name=name,
-                environment=env,
-                volumes=binds,
-                ports=port_bindings,
-                restart_policy=restart_policy,
-                labels=labels,
-                network=primary_net,
-            )
-            for extra_net in extra_nets:
-                with contextlib.suppress(Exception):  # noqa: BLE001
-                    self.client.networks.get(extra_net).connect(new_c)
+            create_options: dict[str, Any] = {
+                "image": image_name,
+                "name": name,
+                "environment": env,
+                "volumes": binds,
+                "ports": port_bindings,
+                "restart_policy": restart_policy,
+                "labels": labels,
+                "cap_add": cap_add,
+                "devices": devices,
+            }
+            if network_mode and network_mode != "default":
+                create_options["network_mode"] = network_mode
+            else:
+                create_options["network"] = primary_net
+            new_c = self.client.containers.create(**create_options)
+            if not network_mode or network_mode == "default":
+                for extra_net in extra_nets:
+                    with contextlib.suppress(Exception):  # noqa: BLE001
+                        self.client.networks.get(extra_net).connect(new_c)
             new_c.start()
         except Exception as exc:  # noqa: BLE001
             # ROLLBACK

@@ -19,6 +19,7 @@ import type {
   HealthOverview,
   EventItem,
   SystemSettings,
+  SystemSettingsUpdate,
   MediaType,
 } from '@/types/api';
 
@@ -359,7 +360,7 @@ export const systemApi = {
       method: 'GET',
     }),
 
-  updateSettings: (data: Partial<SystemSettings>) =>
+  updateSettings: (data: SystemSettingsUpdate) =>
     apiClient<SystemSettings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),

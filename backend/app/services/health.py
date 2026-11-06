@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.adapters.base import HealthIssue, HealthStatus
+from app.adapters.base import HealthIssue, HealthStatus, ServiceKind
 from app.models import Service
-from app.services.common import connection_for, get_setting, make_adapter
+from app.services.common import connection_for, get_service, get_setting, make_adapter
 
 LOW_SPACE_BYTES = 20 * 1024**3
 
@@ -59,6 +59,44 @@ async def storage_issues(db: AsyncSession) -> list[HealthIssue]:
     return issues
 
 
+async def vpn_issues(
+    db: AsyncSession,
+    statuses: list[tuple[Service, HealthStatus, list[HealthIssue]]],
+) -> list[HealthIssue]:
+    if not await get_setting(db, "vpn_enabled"):
+        return []
+
+    qbit = await get_service(db, ServiceKind.qbittorrent)
+    explanation = "The VPN option is on, but qBittorrent is not available through the Gluetun network."
+    fix = (
+        "Open Settings → Apps and connect or install qBittorrent through Gluetun; "
+        "check the VPN container's mapped web port."
+    )
+    if qbit is None or not qbit.enabled:
+        return [HealthIssue(
+            severity="warning",
+            source="gluetun",
+            message="VPN routing is on, but no download client is connected",
+            explanation=explanation,
+            fix=fix,
+        )]
+
+    from urllib.parse import urlparse
+
+    container_name = await get_setting(db, "vpn_container_name") or "gluetun"
+    client_host = urlparse(qbit.internal_url or qbit.base_url).hostname
+    client_status = next((status for service, status, _ in statuses if service.id == qbit.id), None)
+    if client_host != container_name or client_status is None or not client_status.ok:
+        return [HealthIssue(
+            severity="warning",
+            source="gluetun",
+            message="qBittorrent cannot be reached through Gluetun",
+            explanation=explanation,
+            fix=fix,
+        )]
+    return []
+
+
 async def overview(db: AsyncSession) -> dict:
     statuses = await all_statuses(db)
     issues: list[HealthIssue] = []
@@ -71,6 +109,7 @@ async def overview(db: AsyncSession) -> dict:
                                       fix=status.issues[0].fix if status.issues else None))
         for i in svc_issues:
             issues.append(i.model_copy(update={"source": i.source or svc.kind}))
+    issues.extend(await vpn_issues(db, statuses))
     issues.extend(await storage_issues(db))
     if not statuses:
         issues.append(HealthIssue(severity="warning", message="No apps connected yet",

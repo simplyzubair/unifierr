@@ -7,7 +7,8 @@ export type ServiceKind =
   | 'qbittorrent'
   | 'bazarr'
   | 'jellyfin'
-  | 'plex';
+  | 'plex'
+  | 'gluetun';
 
 export type Severity = 'info' | 'warning' | 'error';
 
@@ -297,6 +298,28 @@ export interface SystemSettings {
   tv_path?: string;
   downloads_path?: string;
   language?: string;
+  vpn_enabled?: boolean;
+  vpn_provider?: string;
+  vpn_type?: 'openvpn' | 'wireguard';
+  vpn_server_countries?: string;
+  vpn_has_openvpn_credentials?: boolean;
+  vpn_has_wireguard_key?: boolean;
+  plex_claim_saved?: boolean;
+}
+
+export interface SystemSettingsUpdate {
+  timezone?: string;
+  language?: string;
+  puid?: number;
+  pgid?: number;
+  vpn_enabled?: boolean;
+  vpn_provider?: string;
+  vpn_type?: 'openvpn' | 'wireguard';
+  vpn_server_countries?: string;
+  vpn_username?: string;
+  vpn_password?: string;
+  wireguard_private_key?: string;
+  plex_claim?: string;
 }
 
 // API Error Shape

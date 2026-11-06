@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setupApi, jobsApi } from '@/api';
+import { setupApi, jobsApi, systemApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import { ErrorCard } from '@/components/common/ErrorCard';
 import { ProgressBar } from '@/components/common/ProgressBar';
@@ -36,6 +36,7 @@ const STEPS = [
   'Welcome & Environment',
   'Storage Layout',
   'Apps & Services',
+  'Network & Plex',
   'Installing Apps',
   'Connecting Stack',
   'Ready to Stream',
@@ -86,6 +87,17 @@ export const SetupWizard: React.FC = () => {
   const [mediaServerChoice, setMediaServerChoice] = useState<'jellyfin' | 'plex'>('jellyfin');
   const [customAdoptForm, setCustomAdoptForm] = useState<Record<string, CustomAdoptEntry>>({});
   const [openAdoptAdvanced, setOpenAdoptAdvanced] = useState<Record<string, boolean>>({});
+  const [plexClaim, setPlexClaim] = useState('');
+  const [plexClaimSaved, setPlexClaimSaved] = useState(false);
+  const [vpnEnabled, setVpnEnabled] = useState(false);
+  const [vpnProvider, setVpnProvider] = useState('');
+  const [vpnType, setVpnType] = useState<'openvpn' | 'wireguard'>('openvpn');
+  const [vpnServerCountries, setVpnServerCountries] = useState('');
+  const [vpnUsername, setVpnUsername] = useState('');
+  const [vpnPassword, setVpnPassword] = useState('');
+  const [wireguardPrivateKey, setWireguardPrivateKey] = useState('');
+  const [vpnHasOpenvpnCredentials, setVpnHasOpenvpnCredentials] = useState(false);
+  const [vpnHasWireguardKey, setVpnHasWireguardKey] = useState(false);
 
   // Step 4: Install Job
   const [installJob, setInstallJob] = useState<Job | null>(null);
@@ -100,7 +112,23 @@ export const SetupWizard: React.FC = () => {
   // Load environment on mount
   useEffect(() => {
     loadEnvironment();
+    loadNetworkSettings();
   }, []);
+
+  const loadNetworkSettings = async () => {
+    try {
+      const settings = await systemApi.getSettings();
+      setVpnEnabled(settings.vpn_enabled ?? false);
+      setVpnProvider(settings.vpn_provider ?? '');
+      setVpnType(settings.vpn_type ?? 'openvpn');
+      setVpnServerCountries(settings.vpn_server_countries ?? '');
+      setVpnHasOpenvpnCredentials(settings.vpn_has_openvpn_credentials ?? false);
+      setVpnHasWireguardKey(settings.vpn_has_wireguard_key ?? false);
+      setPlexClaimSaved(settings.plex_claim_saved ?? false);
+    } catch (err: unknown) {
+      setError(err as Error);
+    }
+  };
 
   const loadEnvironment = async () => {
     setLoading(true);
@@ -199,7 +227,7 @@ export const SetupWizard: React.FC = () => {
 
     if (kindsToInstall.length === 0) {
       // Nothing to install, skip directly to wire
-      setCurrentStep(4);
+      setCurrentStep(5);
       startWire();
       return;
     }
@@ -215,6 +243,36 @@ export const SetupWizard: React.FC = () => {
           setError(new Error('App installation encountered a problem. Check step details below.'));
         }
       });
+    } catch (err: unknown) {
+      setError(err as Error);
+      setLoading(false);
+    }
+  };
+
+  const handleNetworkContinue = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const isInstallingPlex = mediaServerChoice === 'plex' && selectedToInstall.has('plex') && !adoptedKinds.has('plex');
+      const settings = await systemApi.updateSettings({
+        vpn_enabled: vpnEnabled,
+        vpn_provider: vpnProvider,
+        vpn_type: vpnType,
+        vpn_server_countries: vpnServerCountries,
+        ...(vpnUsername ? { vpn_username: vpnUsername } : {}),
+        ...(vpnPassword ? { vpn_password: vpnPassword } : {}),
+        ...(wireguardPrivateKey ? { wireguard_private_key: wireguardPrivateKey } : {}),
+        ...(isInstallingPlex && plexClaim ? { plex_claim: plexClaim } : {}),
+      });
+      setVpnHasOpenvpnCredentials(settings.vpn_has_openvpn_credentials ?? vpnHasOpenvpnCredentials);
+      setVpnHasWireguardKey(settings.vpn_has_wireguard_key ?? vpnHasWireguardKey);
+      setPlexClaimSaved(settings.plex_claim_saved ?? plexClaimSaved);
+      setPlexClaim('');
+      setVpnUsername('');
+      setVpnPassword('');
+      setWireguardPrivateKey('');
+      setCurrentStep(4);
+      await startInstall();
     } catch (err: unknown) {
       setError(err as Error);
       setLoading(false);
@@ -871,19 +929,160 @@ export const SetupWizard: React.FC = () => {
               type="button"
               onClick={() => {
                 setCurrentStep(3);
-                startInstall();
               }}
               className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition"
             >
-              Install & Setup Apps
+              Continue to Network & Plex
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 3: Installing Apps */}
+      {/* STEP 3: Network & Plex Setup */}
       {currentStep === 3 && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
+              <Radio className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Network & Plex Setup</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Optional: route supported download apps through a VPN, or claim a new Plex install.
+              </p>
+            </div>
+          </div>
+
+          <section className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={vpnEnabled}
+                onChange={(event) => setVpnEnabled(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900 dark:text-white">Route downloads through VPN</span>
+                <span className="block text-xs text-slate-500 mt-0.5">Gluetun will provide the network for newly installed qBittorrent and Prowlarr containers. Existing app containers are left unchanged.</span>
+              </span>
+            </label>
+
+            {vpnEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  VPN provider (Gluetun name)
+                  <input
+                    type="text"
+                    required
+                    value={vpnProvider}
+                    onChange={(event) => setVpnProvider(event.target.value)}
+                    placeholder="e.g. protonvpn"
+                    className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  VPN connection type
+                  <select
+                    value={vpnType}
+                    onChange={(event) => setVpnType(event.target.value === 'wireguard' ? 'wireguard' : 'openvpn')}
+                    className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                  >
+                    <option value="openvpn">OpenVPN</option>
+                    <option value="wireguard">WireGuard</option>
+                  </select>
+                </label>
+                {vpnType === 'openvpn' ? (
+                  <>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      VPN username {vpnHasOpenvpnCredentials && <span className="font-normal">(saved; leave blank to keep)</span>}
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        value={vpnUsername}
+                        onChange={(event) => setVpnUsername(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      VPN password {vpnHasOpenvpnCredentials && <span className="font-normal">(saved; leave blank to keep)</span>}
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={vpnPassword}
+                        onChange={(event) => setVpnPassword(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 sm:col-span-2">
+                    WireGuard private key {vpnHasWireguardKey && <span className="font-normal">(saved; leave blank to keep)</span>}
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={wireguardPrivateKey}
+                      onChange={(event) => setWireguardPrivateKey(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                    />
+                  </label>
+                )}
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 sm:col-span-2">
+                  Server countries (optional)
+                  <input
+                    type="text"
+                    value={vpnServerCountries}
+                    onChange={(event) => setVpnServerCountries(event.target.value)}
+                    placeholder="e.g. Switzerland"
+                    className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+                  />
+                </label>
+                <p className="text-xs text-slate-500 sm:col-span-2">VPN credentials are encrypted in Unifierr. Check the Gluetun provider list for its exact provider name.</p>
+              </div>
+            )}
+          </section>
+
+          {mediaServerChoice === 'plex' && selectedToInstall.has('plex') && !adoptedKinds.has('plex') && (
+            <section className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Claim your new Plex server</h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Create a token at <a href="https://plex.tv/claim" target="_blank" rel="noreferrer" className="text-brand-600 dark:text-brand-400 underline">plex.tv/claim</a> and paste it here. Claim tokens expire after about 4 minutes, so create one just before installing.
+                </p>
+              </div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                Plex claim token
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={plexClaim}
+                  onChange={(event) => setPlexClaim(event.target.value)}
+                  placeholder={plexClaimSaved ? 'A token is saved securely' : 'claim-…'}
+                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2 text-sm font-mono text-slate-900 dark:text-white"
+                />
+              </label>
+              <p className="text-[11px] text-slate-500">The token is stored encrypted and is never shown in logs. If you are adopting an existing Plex server, leave this blank; Unifierr will not change its configuration.</p>
+            </section>
+          )}
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+            <button type="button" onClick={() => setCurrentStep(2)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <button
+              type="button"
+              onClick={handleNetworkContinue}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
+            >
+              Save & Install Apps <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: Installing Apps */}
+      {currentStep === 4 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6 shadow-sm">
           <div className="flex items-start gap-4">
             <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
@@ -976,7 +1175,7 @@ export const SetupWizard: React.FC = () => {
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
-              onClick={() => setCurrentStep(2)}
+              onClick={() => setCurrentStep(3)}
               className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             >
               <ArrowLeft className="h-4 w-4" /> Back
@@ -985,7 +1184,7 @@ export const SetupWizard: React.FC = () => {
               type="button"
               disabled={installJob?.status === 'running'}
               onClick={() => {
-                setCurrentStep(4);
+                setCurrentStep(5);
                 startWire();
               }}
               className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
@@ -997,8 +1196,8 @@ export const SetupWizard: React.FC = () => {
         </div>
       )}
 
-      {/* STEP 4: Connect Everything (Auto-wiring) */}
-      {currentStep === 4 && (
+      {/* STEP 5: Connect Everything (Auto-wiring) */}
+      {currentStep === 5 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6 shadow-sm">
           <div className="flex items-start gap-4">
             <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
@@ -1107,7 +1306,7 @@ export const SetupWizard: React.FC = () => {
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
-              onClick={() => setCurrentStep(3)}
+              onClick={() => setCurrentStep(4)}
               className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             >
               <ArrowLeft className="h-4 w-4" /> Back
@@ -1115,7 +1314,7 @@ export const SetupWizard: React.FC = () => {
             <button
               type="button"
               disabled={wireJob?.status === 'running'}
-              onClick={() => setCurrentStep(5)}
+              onClick={() => setCurrentStep(6)}
               className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
             >
               Finish Setup
@@ -1125,8 +1324,8 @@ export const SetupWizard: React.FC = () => {
         </div>
       )}
 
-      {/* STEP 5: All Done Celebration */}
-      {currentStep === 5 && (
+      {/* STEP 6: All Done Celebration */}
+      {currentStep === 6 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-6 shadow-sm">
           <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-10 h-10" />

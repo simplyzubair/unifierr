@@ -89,3 +89,29 @@ async def test_detect_network_apps() -> None:
     assert bazarr_app.reachable_url == "http://127.0.0.1:6767"
     assert bazarr_app.managed is False
     assert bazarr_app.container_name is None
+
+
+@pytest.mark.asyncio
+async def test_detect_gluetun_container_without_http_probe() -> None:
+    gluetun = ContainerInfo(
+        id="vpn1",
+        name="secure-vpn",
+        image="qmcgaw/gluetun:latest",
+        status="running",
+        health="healthy",
+        ports={8080: 8080},
+        networks=["unifierr"],
+        mounts=[],
+        labels={"io.unifierr.managed": "true"},
+    )
+    mock_dm = MagicMock(spec=DockerManager)
+    mock_dm.available.return_value = True
+    mock_dm.list_containers.return_value = [gluetun]
+    mock_dm.self_container.return_value = None
+
+    apps = await detect_apps(mock_dm, probe_hosts=["localhost"])
+
+    detected = next(app for app in apps if app.kind == ServiceKind.gluetun)
+    assert detected.container_name == "secure-vpn"
+    assert detected.reachable_url is None
+    assert detected.managed is True

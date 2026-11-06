@@ -446,8 +446,9 @@ async def test_plex_refresh_and_recent(mock):
 
 
 def test_registry_covers_every_kind():
-    assert set(ADAPTERS) == set(ServiceKind)
-    for kind in ServiceKind:
+    # Gluetun is infrastructure, not an HTTP app adapter.
+    assert set(ADAPTERS) | {ServiceKind.gluetun} == set(ServiceKind)
+    for kind in ADAPTERS:
         a = get_adapter(Connection(kind, "http://x:1"))
         assert a.kind == kind and a.display_name and a.default_port
 

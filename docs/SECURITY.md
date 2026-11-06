@@ -13,7 +13,8 @@
 - Behind HTTPS, set `UNIFIERR_SECURE_COOKIES=true`.
 
 **Secrets**
-- API keys and passwords of connected apps are encrypted with Fernet (AES-128-CBC + HMAC).
+- API keys and passwords of connected apps, VPN credentials, WireGuard keys, and Plex claim tokens are
+  encrypted with Fernet (AES-128-CBC + HMAC).
   The key lives in `config/secret.key` (mode 600), or comes from `UNIFIERR_SECRET_KEY`.
 - Secrets are never returned by the API, except the "Show login" button for logins Unifierr created
   (admin only; every view is written to the event log). Logs shown in the UI are redacted.

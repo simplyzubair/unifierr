@@ -56,10 +56,22 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml u
 
 ## Plex
 
-Unifierr can install Plex, but Plex must be linked to your Plex account the first time.
-Get a claim code at <https://plex.tv/claim> (valid 4 minutes), then add `PLEX_CLAIM=claim-xxxx` to the Plex
-container's environment, or link it in Plex's own web page. After that, adopt Plex in the wizard and give it your
-Plex token (Advanced). Jellyfin needs none of this, so it is the recommended choice for beginners.
+When you choose to install a new Plex server in the setup wizard, create a claim token at
+<https://plex.tv/claim> and paste it into the **Network & Plex** step immediately before installation. Tokens
+expire after about four minutes. Unifierr encrypts the token at rest and supplies it to Plex for its first start;
+it is not written to Unifierr's event log. If Plex is already running, adopt it instead—the wizard will not
+rewrite its container or configuration. Jellyfin needs no claim token and remains the recommended choice for
+beginners.
+
+## Optional: route downloads through a VPN
+
+Enable **Route downloads through VPN** in the setup wizard or Settings → Network & VPN. Unifierr installs
+Gluetun and places newly installed qBittorrent and Prowlarr containers in its network namespace. Select the VPN
+provider name used by Gluetun and provide either OpenVPN credentials or a WireGuard private key. Credentials
+are encrypted in Unifierr's database. Existing download apps and existing Gluetun containers are never
+reconfigured; the Health page warns when qBittorrent cannot be reached through Gluetun. Gluetun publishes the
+supported web ports (qBittorrent 8080, Prowlarr 9696, and the conventional SABnzbd/NZBGet ports) through the
+VPN container.
 
 ## Upgrading Unifierr
 

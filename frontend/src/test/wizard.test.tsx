@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { SetupWizard } from '@/pages/setup/SetupWizard';
-import { setupApi } from '@/api';
+import { setupApi, systemApi } from '@/api';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
@@ -24,6 +24,10 @@ vi.mock('@/api', () => ({
   jobsApi: {
     getJob: vi.fn(),
   },
+  systemApi: {
+    getSettings: vi.fn(),
+    updateSettings: vi.fn(),
+  },
 }));
 
 describe('SetupWizard navigation', () => {
@@ -39,6 +43,26 @@ describe('SetupWizard navigation', () => {
       pgid: 1000,
       timezone: 'UTC',
       notes: ['Recommended setup verified.'],
+    });
+    vi.mocked(setupApi.detectApps).mockResolvedValue([]);
+    vi.mocked(systemApi.getSettings).mockResolvedValue({
+      root: '/srv/unifierr',
+      puid: 1000,
+      pgid: 1000,
+      timezone: 'UTC',
+      vpn_enabled: false,
+      vpn_provider: '',
+      vpn_type: 'openvpn',
+      vpn_server_countries: '',
+      vpn_has_openvpn_credentials: false,
+      vpn_has_wireguard_key: false,
+      plex_claim_saved: false,
+    });
+    vi.mocked(systemApi.updateSettings).mockResolvedValue({
+      root: '/srv/unifierr',
+      puid: 1000,
+      pgid: 1000,
+      timezone: 'UTC',
     });
   });
 
@@ -69,5 +93,23 @@ describe('SetupWizard navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('Welcome to Unifierr')).toBeInTheDocument();
     });
+  });
+
+  it('asks for a short-lived claim token when installing a new Plex server', async () => {
+    render(
+      <BrowserRouter>
+        <SetupWizard />
+      </BrowserRouter>
+    );
+
+    await screen.findByText('Welcome to Unifierr');
+    await userEvent.click(screen.getByRole('button', { name: /continue to storage/i }));
+    await userEvent.click(screen.getByRole('button', { name: /continue to apps/i }));
+    await screen.findByText('Choose Your Apps');
+    await userEvent.click(screen.getByRole('radio', { name: /plex media server/i }));
+    await userEvent.click(screen.getByRole('button', { name: /continue to network & plex/i }));
+
+    expect(await screen.findByLabelText('Plex claim token')).toBeInTheDocument();
+    expect(screen.getByText(/expire after about 4 minutes/i)).toBeInTheDocument();
   });
 });

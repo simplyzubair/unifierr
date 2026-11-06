@@ -30,6 +30,8 @@ def _match_kind(c: ContainerInfo) -> ServiceKind | None:
     img = c.image.lower()
     name = c.name.lower()
 
+    if "gluetun" in img or "gluetun" in name:
+        return ServiceKind.gluetun
     if "radarr" in img or "radarr" in name:
         return ServiceKind.radarr
     if "sonarr" in img or "sonarr" in name:
@@ -97,6 +99,22 @@ async def detect_apps(
                 continue
 
             spec = CATALOG[kind]
+            if kind == ServiceKind.gluetun:
+                detected.append(
+                    DetectedApp(
+                        kind=kind,
+                        source="docker",
+                        container_name=c.name,
+                        image=c.image,
+                        url_candidates=[],
+                        reachable_url=None,
+                        config_path=None,
+                        api_key_found=False,
+                        managed=c.labels.get("io.unifierr.managed") == "true",
+                    )
+                )
+                detected_kinds.add(kind)
+                continue
             internal_port = spec.internal_port
             container_nets = set(c.networks)
             shared_network = bool(
@@ -164,7 +182,7 @@ async def detect_apps(
 
         # 2. Probe default ports on probe_hosts for non-Docker / native installs
         for kind, spec in CATALOG.items():
-            if kind in detected_kinds:
+            if kind == ServiceKind.gluetun or kind in detected_kinds:
                 continue
 
             for host in active_probe_hosts:

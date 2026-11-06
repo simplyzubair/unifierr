@@ -13,11 +13,19 @@ def test_catalog_contains_all_services() -> None:
         ServiceKind.bazarr,
         ServiceKind.jellyfin,
         ServiceKind.plex,
+        ServiceKind.gluetun,
     }
     assert set(CATALOG.keys()) == expected_kinds
 
     for kind, spec in CATALOG.items():
         assert spec.kind == kind
+        if kind == ServiceKind.gluetun:
+            assert spec.image == "qmcgaw/gluetun:latest"
+            assert spec.volumes == {}
+            assert "NET_ADMIN" in spec.cap_add
+            assert spec.devices == ["/dev/net/tun:/dev/net/tun"]
+            assert "8080/tcp" in spec.published_ports and "9696/tcp" in spec.published_ports
+            continue
         assert spec.image.startswith("lscr.io/linuxserver/")
         assert "{root}/data" in spec.volumes
         assert spec.volumes["{root}/data"] == "/data"
@@ -44,3 +52,9 @@ def test_catalog_healthcheck_paths() -> None:
     assert CATALOG[ServiceKind.bazarr].healthcheck_path == "/"
     assert CATALOG[ServiceKind.jellyfin].healthcheck_path == "/health"
     assert CATALOG[ServiceKind.plex].healthcheck_path == "/identity"
+
+
+def test_qbit_and_prowlarr_can_share_the_vpn_network() -> None:
+    assert CATALOG[ServiceKind.qbittorrent].vpn_routed
+    assert CATALOG[ServiceKind.prowlarr].vpn_routed
+    assert not CATALOG[ServiceKind.radarr].vpn_routed

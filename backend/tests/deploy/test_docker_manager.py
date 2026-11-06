@@ -181,6 +181,56 @@ def test_install_port_clash_removes_half_created_container() -> None:
     created.remove.assert_called_once_with(force=True)
 
 
+def test_install_gluetun_capabilities_and_published_ports() -> None:
+    mock_client = MagicMock()
+    mock_client.containers.get.side_effect = Exception("Not found")
+    mock_client.api.pull.return_value = []
+    created = MagicMock()
+    created.id = "vpn1"
+    created.name = "gluetun"
+    created.image = "qmcgaw/gluetun:latest"
+    created.status = "running"
+    created.attrs = {
+        "Config": {"Image": "qmcgaw/gluetun:latest", "Labels": {"io.unifierr.managed": "true"}},
+        "State": {"Status": "running"},
+        "NetworkSettings": {"Ports": {}, "Networks": {"unifierr": {}}},
+        "Mounts": [],
+    }
+    mock_client.containers.create.return_value = created
+
+    DockerManager(client=mock_client).install(
+        CATALOG[ServiceKind.gluetun], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC",
+    )
+
+    options = mock_client.containers.create.call_args.kwargs
+    assert options["ports"]["8080/tcp"] == 8080
+    assert options["ports"]["6881/udp"] == 6881
+    assert options["cap_add"] == ["NET_ADMIN"]
+    assert options["devices"] == ["/dev/net/tun:/dev/net/tun"]
+    assert options["volumes"] == {}
+
+
+def test_install_vpn_routed_client_uses_shared_network_and_redacts_env_secret() -> None:
+    token = "claim-secret-that-must-not-appear"
+    mock_client = MagicMock()
+    mock_client.containers.get.side_effect = Exception("Not found")
+    mock_client.api.pull.return_value = []
+    mock_client.containers.create.side_effect = RuntimeError(f"Docker rejected {token}")
+
+    with pytest.raises(UnifierrError) as exc_info:
+        DockerManager(client=mock_client).install(
+            CATALOG[ServiceKind.qbittorrent], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC",
+            network_mode="container:gluetun", env_overrides={"VPN_PASSWORD": token},
+        )
+
+    options = mock_client.containers.create.call_args.kwargs
+    assert options["network_mode"] == "container:gluetun"
+    assert options["ports"] == {}
+    assert "network" not in options
+    assert options["environment"]["VPN_PASSWORD"] == token
+    assert token not in str(exc_info.value)
+
+
 def test_restart_refuses_unmanaged_container() -> None:
     mock_client = MagicMock()
     c = MagicMock()

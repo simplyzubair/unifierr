@@ -25,6 +25,7 @@ class ServiceKind(StrEnum):
     bazarr = "bazarr"
     jellyfin = "jellyfin"
     plex = "plex"
+    gluetun = "gluetun"
 
 
 @dataclass(slots=True)

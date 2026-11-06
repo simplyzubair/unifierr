@@ -15,19 +15,22 @@ from starlette.concurrency import run_in_threadpool
 
 from app.adapters.base import Connection, ServiceKind
 from app.core.config import get_settings
-from app.core.crypto import encrypt
+from app.core.crypto import decrypt, encrypt
 from app.core.db import sessionmaker
 from app.core.errors import UnifierrError
 from app.models import Service
-from app.services.common import get_all_settings, get_service, log_event, make_adapter
+from app.services.common import get_all_settings, get_service, log_event, make_adapter, set_settings
 from app.services.jobs import Job
 
 log = logging.getLogger("unifierr.installer")
 
 # Install order matters: download client and indexers before the apps that use them.
-INSTALL_ORDER = [ServiceKind.qbittorrent, ServiceKind.prowlarr, ServiceKind.radarr, ServiceKind.sonarr,
-                 ServiceKind.bazarr, ServiceKind.jellyfin, ServiceKind.plex]
+INSTALL_ORDER = [
+    ServiceKind.gluetun, ServiceKind.qbittorrent, ServiceKind.prowlarr, ServiceKind.radarr,
+    ServiceKind.sonarr, ServiceKind.bazarr, ServiceKind.jellyfin, ServiceKind.plex,
+]
 ARR_KINDS = {ServiceKind.radarr, ServiceKind.sonarr, ServiceKind.prowlarr}
+VPN_ROUTED_KINDS = {ServiceKind.qbittorrent, ServiceKind.prowlarr}
 DISPLAY = {k: k.value.capitalize() for k in ServiceKind} | {ServiceKind.qbittorrent: "qBittorrent"}
 
 
@@ -116,6 +119,38 @@ async def install_one(db: AsyncSession, job: Job, kind: ServiceKind, settings: d
         return
     spec = CATALOG[kind]
     root = settings["root"]
+
+    dm = docker_manager()
+    if kind == ServiceKind.gluetun:
+        containers = await run_in_threadpool(dm.list_containers, False)
+        existing = next((c for c in containers if "gluetun" in c.image.lower() or "gluetun" in c.name.lower()), None)
+        if existing:
+            settings["vpn_container_name"] = existing.name
+            await run_in_threadpool(dm.connect_network, existing.name, "unifierr")
+            job.skip(s, f"Using existing VPN container '{existing.name}' without changing its settings.")
+            return
+
+        vpn_env = {
+            "VPN_SERVICE_PROVIDER": str(settings["vpn_provider"]),
+            "VPN_TYPE": str(settings.get("vpn_type") or "openvpn"),
+            "FIREWALL_INPUT_PORTS": "8080,6881,9696,8081,6789",
+        }
+        if settings.get("vpn_type") == "wireguard":
+            vpn_env["WIREGUARD_PRIVATE_KEY"] = decrypt(settings.get("wireguard_private_key_enc")) or ""
+        else:
+            vpn_env["OPENVPN_USER"] = decrypt(settings.get("vpn_username_enc")) or ""
+            vpn_env["OPENVPN_PASSWORD"] = decrypt(settings.get("vpn_password_enc")) or ""
+        if settings.get("vpn_server_countries"):
+            vpn_env["SERVER_COUNTRIES"] = str(settings["vpn_server_countries"])
+        await run_in_threadpool(
+            dm.install, spec, root=root, puid=int(settings["puid"]), pgid=int(settings["pgid"]),
+            tz=settings["timezone"], env_overrides=vpn_env, progress=job.say,
+        )
+        settings["vpn_container_name"] = spec.container_name
+        await set_settings(db, {"vpn_container_name": spec.container_name})
+        job.ok(s, "Gluetun is running; routed apps will share its VPN network.")
+        return
+
     cfg = appdata_dir(root, kind)
     await run_in_threadpool(cfg.mkdir, parents=True, exist_ok=True)
 
@@ -127,12 +162,21 @@ async def install_one(db: AsyncSession, job: Job, kind: ServiceKind, settings: d
         username, password = "admin", secrets.token_urlsafe(16)
         await run_in_threadpool(keys.preseed_qbittorrent, str(cfg), username, password)
 
-    dm = docker_manager()
+    network_mode = None
+    if settings.get("vpn_enabled") and spec.vpn_routed:
+        vpn_container_name = settings.get("vpn_container_name") or "gluetun"
+        network_mode = f"container:{vpn_container_name}"
+    env_overrides = None
+    if kind == ServiceKind.plex:
+        claim = decrypt(settings.get("plex_claim_enc"))
+        if claim:
+            env_overrides = {"PLEX_CLAIM": claim}
     await run_in_threadpool(
         dm.install, spec, root=root, puid=int(settings["puid"]), pgid=int(settings["pgid"]),
-        tz=settings["timezone"], progress=job.say,
+        tz=settings["timezone"], network_mode=network_mode, env_overrides=env_overrides, progress=job.say,
     )
-    url = f"http://{spec.container_name}:{spec.internal_port}"
+    url_host = settings.get("vpn_container_name", "gluetun") if network_mode else spec.container_name
+    url = f"http://{url_host}:{spec.internal_port}"
     job.say(f"Waiting for {name} to start…")
     if not await wait_until_up(url + spec.healthcheck_path, job=job):
         raise UnifierrError(
@@ -182,14 +226,33 @@ async def run_install(job: Job, kinds: list[ServiceKind]) -> dict:
         except Exception as exc:  # noqa: BLE001
             job.fail(s, exc)
             return {"installed": []}
+        requested = set(kinds)
+        # Gluetun is an internal network sidecar, not a standalone user app.
+        requested.discard(ServiceKind.gluetun)
+        if settings.get("vpn_enabled") and requested & VPN_ROUTED_KINDS:
+            requested.add(ServiceKind.gluetun)
+        ordered = [k for k in INSTALL_ORDER if k in requested]
         installed = []
-        for kind in [k for k in INSTALL_ORDER if k in kinds]:
+        vpn_ready = True
+        for kind in ordered:
+            if kind in VPN_ROUTED_KINDS and settings.get("vpn_enabled") and not vpn_ready:
+                step = job.step(f"Install {DISPLAY[kind]}")
+                job.skip(step, "Gluetun did not start, so this app was left off the VPN network.")
+                continue
             try:
                 await install_one(db, job, kind, settings)
                 installed.append(kind.value)
             except Exception as exc:  # noqa: BLE001
                 job.fail(job.steps[-1] if job.steps[-1].status == "running" else job.step(f"Install {kind}"), exc)
                 await log_event(db, "install", f"Installing {DISPLAY[kind]} failed: {exc}", level="error")
+                if kind == ServiceKind.gluetun:
+                    vpn_ready = False
+            if kind == ServiceKind.gluetun and job.steps[-1].status == "failed":
+                vpn_ready = False
+        if ServiceKind.plex in requested:
+            # A Plex claim token is single-use and expires quickly. Do not leave it in settings
+            # after the install attempt, successful or not.
+            await set_settings(db, {"plex_claim_enc": None})
         return {"installed": installed}
 
 

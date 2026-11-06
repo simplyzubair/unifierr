@@ -23,6 +23,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "timezone": "UTC",
     "language": "en",
     "media_server": None,  # jellyfin | plex
+    "vpn_enabled": False,
+    "vpn_provider": "",
+    "vpn_type": "openvpn",
+    "vpn_server_countries": "",
+    "vpn_container_name": "gluetun",
 }
 
 # Paths as seen INSIDE the managed containers (all mount <root>/data at /data).

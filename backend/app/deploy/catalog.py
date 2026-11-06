@@ -1,7 +1,7 @@
 """Application catalog defining container specifications for supported media services."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.adapters.base import ServiceKind
 
@@ -17,6 +17,10 @@ class AppSpec(BaseModel):
     env: dict[str, str]  # may use {puid},{pgid},{tz}
     healthcheck_path: str  # HTTP path that returns 200/reachable when up
     description: str  # one beginner-friendly sentence
+    cap_add: list[str] = Field(default_factory=list)
+    devices: list[str] = Field(default_factory=list)
+    published_ports: dict[str, int] = Field(default_factory=dict)
+    vpn_routed: bool = False
 
 
 CATALOG: dict[ServiceKind, AppSpec] = {
@@ -76,6 +80,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         },
         healthcheck_path="/ping",
         description="Indexer manager that connects torrent and Usenet indexers to Radarr and Sonarr.",
+        vpn_routed=True,
     ),
     ServiceKind.qbittorrent: AppSpec(
         kind=ServiceKind.qbittorrent,
@@ -96,6 +101,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         },
         healthcheck_path="/",
         description="Fast and lightweight torrent download client with a clean web management interface.",
+        vpn_routed=True,
     ),
     ServiceKind.bazarr: AppSpec(
         kind=ServiceKind.bazarr,
@@ -154,5 +160,27 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         },
         healthcheck_path="/identity",
         description="Popular media server streaming movies, TV shows, and music to any device.",
+    ),
+    ServiceKind.gluetun: AppSpec(
+        kind=ServiceKind.gluetun,
+        display_name="Gluetun VPN",
+        image="qmcgaw/gluetun:latest",
+        container_name="gluetun",
+        internal_port=0,
+        default_host_port=0,
+        volumes={},
+        env={},
+        healthcheck_path="",
+        description="Encrypted VPN network used to protect supported download apps.",
+        cap_add=["NET_ADMIN"],
+        devices=["/dev/net/tun:/dev/net/tun"],
+        published_ports={
+            "8080/tcp": 8080,  # qBittorrent Web UI
+            "6881/tcp": 6881,
+            "6881/udp": 6881,
+            "9696/tcp": 9696,  # Prowlarr Web UI
+            "8081/tcp": 8081,  # SABnzbd Web UI (when configured on 8081)
+            "6789/tcp": 6789,  # NZBGet Web UI
+        },
     ),
 }
