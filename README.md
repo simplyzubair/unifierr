@@ -56,16 +56,18 @@ Platform notes (Synology, Unraid, TrueNAS), building from source, upgrades and b
 | Area | Status |
 |---|---|
 | Setup wizard, environment detection (Synology/Unraid/TrueNAS/Linux) | ✅ |
-| Install Radarr, Sonarr, Prowlarr, qBittorrent, Bazarr, Jellyfin, Plex with Docker | ✅ |
+| Install Radarr, Sonarr, Prowlarr, qBittorrent, SABnzbd, NZBGet, Bazarr, Jellyfin, Plex with Docker | ✅ |
 | Detect and adopt existing installs, reading their API keys from their config files | ✅ |
-| Auto-wiring: root folders, qBittorrent + categories, Prowlarr → Radarr/Sonarr, Bazarr, Jellyfin/Plex libraries + refresh on import | ✅ |
+| Auto-wiring: root folders, download client + categories (torrent or Usenet), Prowlarr → Radarr/Sonarr, Bazarr, Jellyfin/Plex libraries + refresh on import | ✅ |
 | Discover/search, requests with approval for non-admin users | ✅ |
 | Downloads (pause/resume/remove), indexers, subtitles, library, storage, health | ✅ |
 | Update / restart / logs for apps Unifierr installed | ✅ |
 | Backup and restore of Unifierr's own data | ✅ |
-| Usenet clients (SABnzbd/NZBGet), VPN container, multiple Radarr instances | ❌ not yet |
-| Plex first-time claim from the wizard | ⚠️ set `PLEX_CLAIM` yourself (see INSTALL.md) |
-| Quality profiles / TRaSH custom formats | ❌ not yet (apps keep their defaults) |
+| Usenet download clients (SABnzbd, NZBGet) with a download-client picker | ✅ |
+| VPN container (Gluetun) routing for download clients | ✅ |
+| Multiple Radarr/Sonarr instances (named instances, per-instance wiring) | ✅ backend + API; instance UI is a follow-up |
+| Plex first-time claim from the wizard | ✅ |
+| Quality profiles / TRaSH custom formats | ✅ opt-in (Settings → Network → "Use TRaSH-Guides quality profiles") |
 
 ## Safety promises
 
