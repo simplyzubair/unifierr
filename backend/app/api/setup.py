@@ -30,6 +30,7 @@ class InstallIn(BaseModel):
 
 class AdoptIn(BaseModel):
     kind: ServiceKind
+    name: str | None = Field(default=None, max_length=64)
     base_url: str | None = Field(default=None, max_length=255, pattern=r"^https?://[^\s]+$")
     api_key: str | None = Field(default=None, max_length=255)
     username: str | None = Field(default=None, max_length=128)
@@ -85,7 +86,7 @@ async def install(body: InstallIn):
 
 @router.post("/setup/adopt")
 async def adopt(body: AdoptIn, db: AsyncSession = Depends(get_db)):
-    svc = await installer.adopt(db, body.kind, base_url=body.base_url, api_key=body.api_key,
+    svc = await installer.adopt(db, body.kind, name=body.name, base_url=body.base_url, api_key=body.api_key,
                                 username=body.username, password=body.password)
     return await service_out(svc)
 

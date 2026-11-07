@@ -109,6 +109,7 @@ export const setupApi = {
 
   adopt: (data: {
     kind: ServiceKind;
+    name?: string;
     base_url?: string;
     api_key?: string;
     username?: string;

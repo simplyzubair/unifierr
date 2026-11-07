@@ -89,3 +89,22 @@ async def test_wiring_keeps_existing_folder_of_adopted_app(client, fakes):
     step = next(s for s in job.steps if s.name == "Set Radarr media folder")
     assert step.status == "skipped" and "/movies" in step.message
     assert not any(c[1] == "ensure_root_folder" for c in CALLS)
+
+
+async def test_wiring_handles_multiple_arr_instances(client, fakes):
+    """Two Radarr instances are wired independently with distinct download categories."""
+    async with sessionmaker()() as db:
+        await save_service(db, ServiceKind.radarr, base_url="http://radarr:1234", api_key="key")
+        await save_service(db, ServiceKind.radarr, base_url="http://radarr4k:1234", api_key="key",
+                           name="Radarr 4K")
+        await save_service(db, ServiceKind.qbittorrent, base_url="http://qbittorrent:1234",
+                           api_key=None, username="admin", password="pw")
+    job = Job(id="t", kind="wire")
+    result = await run_wiring(job)
+    assert result["failed"] == [], [(s.name, s.message) for s in job.steps]
+    root_calls = [c for c in CALLS if c[1] == "ensure_root_folder"]
+    assert len(root_calls) == 2
+    qb_calls = [c for c in CALLS if c[1] == "ensure_qbittorrent_client"]
+    assert len(qb_calls) == 2
+    categories = {c[3]["category"] for c in qb_calls}
+    assert len(categories) == 2  # per-instance categories must never collide
