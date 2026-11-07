@@ -313,12 +313,19 @@ def _cf_signature(cf: dict[str, Any]) -> tuple[Any, ...]:
     return (norm["name"].strip().lower(), norm["includeCustomFormatWhenRenaming"], spec_sigs)
 
 
+def _quality_key(q: Any, fallback: Any = None) -> Any:
+    """A quality may be an id (int) in *arr API data or a name (dict) in TRaSH data."""
+    if isinstance(q, dict):
+        return q.get("name") or fallback
+    return q if q is not None else fallback
+
+
 def _profile_items_signature(items: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
     sig: list[tuple[Any, ...]] = []
     for it in items or []:
-        q = it.get("quality") or {}
-        sub = tuple((s.get("quality") or {}).get("name") or s.get("name") for s in (it.get("items") or []))
-        sig.append((q.get("name") or it.get("name"), bool(it.get("allowed", False)), sub))
+        q = it.get("quality")
+        sub = tuple(_quality_key(s.get("quality"), s.get("name")) for s in (it.get("items") or []))
+        sig.append((_quality_key(q, it.get("name")), bool(it.get("allowed", False)), sub))
     return sig
 
 
@@ -473,6 +480,44 @@ class ArrAdapter(ArrBase):
     async def quality_profiles(self) -> list[dict[str, Any]]:
         data = await self._json("GET", "/qualityprofile")
         return [{"id": p["id"], "name": p.get("name", "")} for p in data or []]
+
+    async def custom_formats(self) -> list[dict[str, Any]]:
+        return [c for c in (await self._json("GET", "/customformat") or []) if isinstance(c, dict)]
+
+    async def ensure_custom_format(self, cf: dict[str, Any]) -> dict[str, Any]:
+        """Create or update a custom format by name. Returns the stored record (unchanged if identical)."""
+        name = str(cf.get("name", "")).strip()
+        if not name:
+            raise ServiceUnavailable(f"{self.display_name} custom format has no name")
+        existing = await self.custom_formats()
+        target = next((c for c in existing if str(c.get("name", "")).strip().lower() == name.lower()), None)
+        body = normalize_cf_payload(cf)
+        if target is not None:
+            if _cf_signature(target) == _cf_signature(cf):
+                return target
+            resp = await self._api("PUT", f"/customformat/{target['id']}", json={**target, **body, "id": target["id"]})
+            return parse_json(resp, self.display_name)
+        resp = await self._api("POST", "/customformat", json=body)
+        return parse_json(resp, self.display_name)
+
+    async def quality_definitions(self) -> list[dict[str, Any]]:
+        return [d for d in (await self._json("GET", "/qualitydefinition") or []) if isinstance(d, dict)]
+
+    async def ensure_quality_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Create or update a quality profile by name. Returns the stored record (unchanged if identical)."""
+        name = str(profile.get("name", "")).strip()
+        if not name:
+            raise ServiceUnavailable(f"{self.display_name} quality profile has no name")
+        existing = await self._json("GET", "/qualityprofile") or []
+        target = next((p for p in existing if str(p.get("name", "")).strip().lower() == name.lower()), None)
+        if target is not None:
+            if _profile_matches(target, profile):
+                return target
+            body = {**target, **profile, "id": target["id"]}
+            resp = await self._api("PUT", f"/qualityprofile/{target['id']}", json=body)
+            return parse_json(resp, self.display_name)
+        resp = await self._api("POST", "/qualityprofile", json=profile)
+        return parse_json(resp, self.display_name)
 
     async def root_folders(self) -> list[dict[str, Any]]:
         data = await self._json("GET", "/rootfolder")

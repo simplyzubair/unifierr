@@ -308,6 +308,8 @@ export interface SystemSettings {
   vpn_has_wireguard_key?: boolean;
   plex_claim_saved?: boolean;
   download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget' | null;
+  trash_profiles?: boolean;
+  trash_profile?: string | null;
 }
 
 export interface SystemSettingsUpdate {
@@ -324,6 +326,8 @@ export interface SystemSettingsUpdate {
   wireguard_private_key?: string;
   plex_claim?: string;
   download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget';
+  trash_profiles?: boolean;
+  trash_profile?: string;
 }
 
 // API Error Shape

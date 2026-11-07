@@ -29,6 +29,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "vpn_server_countries": "",
     "vpn_container_name": "gluetun",
     "download_client": None,  # qbittorrent | sabnzbd | nzbget (picked in the wizard)
+    "trash_profiles": False,  # opt-in: apply TRaSH-Guides quality profiles + custom formats
+    "trash_profile": None,  # optional override of the default TRaSH profile name
 }
 
 # Paths as seen INSIDE the managed containers (all mount <root>/data at /data).

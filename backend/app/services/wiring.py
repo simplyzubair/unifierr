@@ -304,6 +304,17 @@ async def _wire_notifications(db: AsyncSession, job: Job) -> None:
                 job.fail(s, exc)
 
 
+async def _wire_trash(db: AsyncSession, job: Job) -> None:
+    """Apply TRaSH-Guides quality profiles + custom formats when the user opted in."""
+    if not await get_setting(db, "trash_profiles"):
+        job.skip(job.step("TRaSH quality profiles"),
+                 "Off. Turn on 'Use TRaSH quality profiles' in Settings to apply them.")
+        return
+    from app.services.trash import apply_trash_profiles
+
+    await apply_trash_profiles(db, job)
+
+
 async def run_wiring(job: Job) -> dict:
     async with sessionmaker()() as db:
         await _wire_arr_basics(db, job)
@@ -315,6 +326,7 @@ async def run_wiring(job: Job) -> dict:
             s = job.step("Media server")
             job.skip(s, "No Jellyfin or Plex connected. You can add one later.")
         await _wire_notifications(db, job)
+        await _wire_trash(db, job)
         failed = [s.name for s in job.steps if s.status == "failed"]
         if has_jf or has_plex:
             await set_settings(db, {"media_server": "jellyfin" if has_jf else "plex"})

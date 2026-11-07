@@ -41,6 +41,8 @@ class SettingsIn(BaseModel):
     wireguard_private_key: str | None = None
     plex_claim: str | None = None
     download_client: Literal["qbittorrent", "sabnzbd", "nzbget"] | None = None
+    trash_profiles: bool | None = None
+    trash_profile: str | None = Field(default=None, max_length=128)
 
 
 @router.get("/settings")
@@ -55,6 +57,7 @@ async def get_settings_route(db: AsyncSession = Depends(get_db)):
             "vpn_has_wireguard_key": bool(s.get("wireguard_private_key_enc")),
             "plex_claim_saved": bool(s.get("plex_claim_enc")),
             "download_client": s["download_client"],
+            "trash_profiles": s.get("trash_profiles", False), "trash_profile": s.get("trash_profile"),
             "movies_path": MOVIES_PATH, "tv_path": TV_PATH, "downloads_path": TORRENTS_MOVIES.rsplit("/", 1)[0],
             "version": __version__}
 
