@@ -71,6 +71,8 @@ export const Settings: React.FC = () => {
     vpn_provider: '',
     vpn_type: 'openvpn' as 'openvpn' | 'wireguard',
     vpn_server_countries: '',
+    download_client: 'qbittorrent' as 'qbittorrent' | 'sabnzbd' | 'nzbget',
+    trash_profiles: false,
   });
   const [networkSecrets, setNetworkSecrets] = useState({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
   const [networkSaving, setNetworkSaving] = useState(false);
@@ -110,6 +112,8 @@ export const Settings: React.FC = () => {
         vpn_provider: settings.vpn_provider ?? '',
         vpn_type: settings.vpn_type ?? 'openvpn',
         vpn_server_countries: settings.vpn_server_countries ?? '',
+        download_client: settings.download_client ?? 'qbittorrent',
+        trash_profiles: settings.trash_profiles ?? false,
       });
     } catch (err: unknown) {
       setError(err as Error);
@@ -709,6 +713,35 @@ export const Settings: React.FC = () => {
               <p className="text-xs text-slate-500 sm:col-span-2">Credentials are encrypted at rest. Use the exact provider name supported by Gluetun. Changing these settings does not rewrite an existing VPN container.</p>
             </div>
           )}
+
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Download client</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Which download client Radarr and Sonarr should send releases to.</p>
+              <select
+                value={networkForm.download_client}
+                onChange={(event) => setNetworkForm({ ...networkForm, download_client: event.target.value as 'qbittorrent' | 'sabnzbd' | 'nzbget' })}
+                className="mt-2 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
+              >
+                <option value="qbittorrent">qBittorrent (torrents)</option>
+                <option value="sabnzbd">SABnzbd (Usenet)</option>
+                <option value="nzbget">NZBGet (Usenet)</option>
+              </select>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={networkForm.trash_profiles}
+                onChange={(event) => setNetworkForm({ ...networkForm, trash_profiles: event.target.checked })}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-slate-900 dark:text-white">Use TRaSH-Guides quality profiles</span>
+                <span className="block text-xs text-slate-500 mt-0.5">Applies the recommended TRaSH quality profile and custom formats to Radarr and Sonarr during wiring. Your own profiles are never changed.</span>
+              </span>
+            </label>
+          </div>
 
           <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-4">
             <button type="submit" disabled={networkSaving} className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold px-4 py-2 text-xs disabled:opacity-50">
