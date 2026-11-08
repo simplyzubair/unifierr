@@ -11,6 +11,7 @@ import type {
   MediaResult,
   MediaItem,
   RequestOut,
+  RequestPreflight,
   DownloadsResponse,
   Indexer,
   IndexerSchema,
@@ -210,6 +211,15 @@ export const mediaApi = {
       params: { type },
     }),
 
+  deleteLibraryItem: (type: 'movie' | 'series', externalId: number, deleteFiles: boolean) =>
+    apiClient<{ removed: boolean; library_refresh_requested: boolean }>(
+      `/api/media/library/${type}/${externalId}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ confirm: true, delete_files: deleteFiles }),
+      },
+    ),
+
   getRecent: () =>
     apiClient<MediaItem[]>('/api/media/recent', {
       method: 'GET',
@@ -221,6 +231,19 @@ export const requestsApi = {
     apiClient<RequestOut[]>('/api/requests', {
       method: 'GET',
       params: { status },
+    }),
+
+  preflight: (data: {
+    media_type: MediaType;
+    tmdb_id?: number | null;
+    tvdb_id?: number | null;
+    title: string;
+    year?: number | null;
+    poster_url?: string | null;
+  }) =>
+    apiClient<RequestPreflight>('/api/requests/preflight', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   createRequest: (data: {

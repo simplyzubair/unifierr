@@ -4,16 +4,21 @@ import { ErrorCard } from '@/components/common/ErrorCard';
 import { AvailabilityBadge } from '@/components/common/Badge';
 import { PosterSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useAuth } from '@/context/AuthContext';
 import type { MediaResult, MediaType } from '@/types/api';
-import { Film, Tv, Search, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Film, Tv, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 
 export const Library: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<MediaType>('movie');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'missing'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<MediaResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediaResult | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadLibrary();
@@ -56,6 +61,27 @@ export const Library: React.FC = () => {
     if (!bytes) return null;
     const gb = bytes / (1024 * 1024 * 1024);
     return `${gb.toFixed(1)} GB`;
+  };
+
+  const handleDeleteConfirm = async (deleteFiles?: boolean) => {
+    if (!deleteTarget || deleteTarget.external_id == null) return;
+    try {
+      const result = await mediaApi.deleteLibraryItem(
+        deleteTarget.media_type,
+        deleteTarget.external_id,
+        !!deleteFiles,
+      );
+      setItems((current) => current.filter((item) => item.external_id !== deleteTarget.external_id));
+      const title = deleteTarget.title;
+      setSuccessMessage(deleteFiles
+        ? result.library_refresh_requested
+          ? `${title} and its media files were removed. Your media library is refreshing.`
+          : `${title} and its media files were removed. Your media player will update on its next scan.`
+        : `${title} was removed from Radarr/Sonarr and Unifierr. Its files were kept, so it may still appear in Jellyfin or Plex.`);
+      setDeleteTarget(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err : new Error('Could not remove this title from the library.'));
+    }
   };
 
   return (
@@ -132,6 +158,14 @@ export const Library: React.FC = () => {
       </div>
 
       <ErrorCard error={error} onDismiss={() => setError(null)} />
+      {successMessage && (
+        <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+          {successMessage}
+          <button type="button" onClick={() => setSuccessMessage(null)} className="ml-3 font-semibold underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
@@ -196,6 +230,17 @@ export const Library: React.FC = () => {
                       {Math.round(item.percent_complete)}%
                     </span>
                   )}
+                  {isAdmin && item.external_id != null && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(item)}
+                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                      aria-label={`Remove ${item.title} from the library`}
+                      title="Remove from library"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -212,6 +257,17 @@ export const Library: React.FC = () => {
           }
         />
       )}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title={`Remove ${deleteTarget?.media_type === 'series' ? 'series' : 'movie'}?`}
+        description={`This removes “${deleteTarget?.title ?? ''}” from ${deleteTarget?.media_type === 'series' ? 'Sonarr' : 'Radarr'} and clears its old Unifierr request record. Leave the box unchecked to keep media files. This does not remove download-client jobs or seeding data.`}
+        confirmLabel="Remove from library"
+        isDestructive
+        checkboxLabel="Also delete media files managed by Radarr/Sonarr"
+        defaultCheckboxState={false}
+      />
     </div>
   );
 };

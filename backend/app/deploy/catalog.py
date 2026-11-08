@@ -13,6 +13,7 @@ class AppSpec(BaseModel):
     container_name: str
     internal_port: int
     default_host_port: int
+    publish_by_default: bool = False
     volumes: dict[str, str]  # host template -> container path; templates use {root},{appdata}
     env: dict[str, str]  # may use {puid},{pgid},{tz}
     healthcheck_path: str  # HTTP path that returns 200/reachable when up
@@ -39,6 +40,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/ping",
         description="Automates movie downloading, sorting, and library management.",
@@ -58,6 +60,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/ping",
         description="Automates TV series downloading, sorting, and episode tracking.",
@@ -77,6 +80,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/ping",
         description="Indexer manager that connects torrent and Usenet indexers to Radarr and Sonarr.",
@@ -97,6 +101,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
             "WEBUI_PORT": "8080",
         },
         healthcheck_path="/",
@@ -118,6 +123,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/",
         description="Popular Usenet download client that fetches, checks, and unpacks NZB files.",
@@ -125,7 +131,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
     ServiceKind.nzbget: AppSpec(
         kind=ServiceKind.nzbget,
         display_name="NZBGet",
-        image="lscr.io/linuxserver/nzbget:latest",
+    image="lscr.io/linuxserver/nzbget:latest",
         container_name="nzbget",
         internal_port=6789,
         default_host_port=6789,
@@ -133,11 +139,12 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "{appdata}/nzbget": "/config",
             "{root}/data": "/data",
         },
-        env={
-            "PUID": "{puid}",
-            "PGID": "{pgid}",
-            "TZ": "{tz}",
-        },
+env={
+    "PUID": "{puid}",
+    "PGID": "{pgid}",
+    "TZ": "{tz}",
+    "UMASK": "002",
+},
         healthcheck_path="/",
         description="Lightweight Usenet download client, ideal for low-power NAS devices.",
     ),
@@ -156,6 +163,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/",
         description="Companion application to Radarr and Sonarr for automatic subtitle downloading.",
@@ -167,6 +175,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         container_name="jellyfin",
         internal_port=8096,
         default_host_port=8096,
+        publish_by_default=True,
         volumes={
             "{appdata}/jellyfin": "/config",
             "{root}/data": "/data",
@@ -175,6 +184,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
         },
         healthcheck_path="/health",
         description="Free and open-source media streaming server with no paywalls or tracking.",
@@ -186,6 +196,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         container_name="plex",
         internal_port=32400,
         default_host_port=32400,
+        publish_by_default=True,
         volumes={
             "{appdata}/plex": "/config",
             "{root}/data": "/data",
@@ -194,6 +205,7 @@ CATALOG: dict[ServiceKind, AppSpec] = {
             "PUID": "{puid}",
             "PGID": "{pgid}",
             "TZ": "{tz}",
+            "UMASK": "002",
             "VERSION": "docker",
         },
         healthcheck_path="/identity",
@@ -213,12 +225,8 @@ CATALOG: dict[ServiceKind, AppSpec] = {
         cap_add=["NET_ADMIN"],
         devices=["/dev/net/tun:/dev/net/tun"],
         published_ports={
-            "8080/tcp": 8080,  # qBittorrent Web UI
             "6881/tcp": 6881,
             "6881/udp": 6881,
-            "9696/tcp": 9696,  # Prowlarr Web UI
-            "8081/tcp": 8081,  # SABnzbd Web UI (when configured on 8081)
-            "6789/tcp": 6789,  # NZBGet Web UI
         },
     ),
 }

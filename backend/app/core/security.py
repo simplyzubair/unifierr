@@ -8,6 +8,7 @@ Cookies are also SameSite=Strict.
 import hashlib
 import secrets
 import time
+from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
@@ -37,8 +38,8 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 def validate_new_password(password: str) -> None:
-    if len(password) < 8:
-        raise HTTPException(400, detail="Password must be at least 8 characters.")
+    if len(password) < 12:
+        raise HTTPException(400, detail="Password must be at least 12 characters.")
     if len(password) > 256:
         raise HTTPException(400, detail="Password is too long.")
 
@@ -94,24 +95,52 @@ async def require_admin(user: User = Depends(current_user)) -> User:
 
 
 class LoginRateLimiter:
-    """In-memory limiter: at most `limit` failed attempts per key within `window` seconds."""
+    """Limit failed attempts per key with a bounded in-memory tracking table."""
 
-    def __init__(self, limit: int = 10, window: int = 300):
+    def __init__(self, limit: int = 10, window: int = 300, max_keys: int = 4096):
         self.limit, self.window = limit, window
-        self._fails: dict[str, list[float]] = {}
+        self.max_keys = max(1, max_keys)
+        self._fails: OrderedDict[str, list[float]] = OrderedDict()
+        self._last_prune = 0.0
+
+    def _prune_expired(self, now: float) -> None:
+        if now - self._last_prune < self.window:
+            return
+        cutoff = now - self.window
+        for key, timestamps in list(self._fails.items()):
+            recent = [stamp for stamp in timestamps if stamp > cutoff]
+            if recent:
+                self._fails[key] = recent
+            else:
+                del self._fails[key]
+        self._last_prune = now
 
     def check(self, key: str) -> None:
         now = time.monotonic()
-        recent = [t for t in self._fails.get(key, []) if now - t < self.window]
-        self._fails[key] = recent
+        self._prune_expired(now)
+        recent = [stamp for stamp in self._fails.get(key, []) if now - stamp < self.window]
+        if recent:
+            self._fails[key] = recent
+            self._fails.move_to_end(key)
+        else:
+            self._fails.pop(key, None)
         if len(recent) >= self.limit:
             raise HTTPException(429, detail="Too many failed sign-in attempts. Wait a few minutes.")
 
     def fail(self, key: str) -> None:
-        self._fails.setdefault(key, []).append(time.monotonic())
+        now = time.monotonic()
+        self._prune_expired(now)
+        if key not in self._fails and len(self._fails) >= self.max_keys:
+            self._fails.popitem(last=False)
+        self._fails.setdefault(key, []).append(now)
+        self._fails.move_to_end(key)
 
     def reset(self, key: str) -> None:
         self._fails.pop(key, None)
 
 
-login_limiter = LoginRateLimiter()
+# Per-account lockout prevents password guessing across different source IPs.
+login_limiter = LoginRateLimiter(limit=10)
+# A looser source limit slows username spraying without quickly locking out
+# everyone who shares a household network or reverse proxy.
+login_ip_limiter = LoginRateLimiter(limit=100)

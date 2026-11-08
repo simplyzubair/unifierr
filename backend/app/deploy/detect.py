@@ -9,6 +9,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.adapters.base import ServiceKind
+from app.core.safe_http import SafeAsyncClient
 from app.deploy.catalog import CATALOG
 from app.deploy.docker_manager import ContainerInfo, DockerManager
 from app.deploy.keys import read_arr_api_key, read_bazarr_api_key, read_nzbget_credentials, read_sabnzbd_api_key
@@ -60,15 +61,8 @@ async def _probe_url(client: httpx.AsyncClient, url: str, healthcheck_path: str)
     target = url.rstrip("/") + healthcheck_path
     with contextlib.suppress(Exception):  # noqa: BLE001
         resp = await client.get(target)
-        if resp.status_code < 500:
+        if 200 <= resp.status_code < 400:
             return True
-
-    # Try root as fallback
-    if healthcheck_path != "/":
-        with contextlib.suppress(Exception):  # noqa: BLE001
-            resp = await client.get(url.rstrip("/") + "/")
-            if resp.status_code < 500:
-                return True
     return False
 
 
@@ -95,7 +89,7 @@ async def detect_apps(
         else ["host.docker.internal", "localhost", "127.0.0.1"]
     )
 
-    async with httpx.AsyncClient(timeout=1.0, follow_redirects=False) as http_client:
+    async with SafeAsyncClient(timeout=1.0, follow_redirects=False) as http_client:
         # 1. Inspect Docker containers
         for c in containers:
             kind = _match_kind(c)

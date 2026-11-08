@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { AlertTriangle } from 'lucide-react';
 
@@ -28,6 +28,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   defaultCheckboxState = false,
 }) => {
   const [isChecked, setIsChecked] = useState(defaultCheckboxState);
+
+  useEffect(() => {
+    if (isOpen) setIsChecked(defaultCheckboxState);
+  }, [defaultCheckboxState, isOpen]);
 
   const handleConfirm = () => {
     onConfirm(checkboxLabel ? isChecked : undefined);

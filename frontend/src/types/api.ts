@@ -96,6 +96,7 @@ export interface IndexerSchemaField {
   value?: unknown;
   advanced?: boolean;
   helpText?: string;
+  selectOptions?: { value: string | number; name: string }[];
 }
 
 export interface IndexerSchema {
@@ -245,10 +246,23 @@ export interface RequestOut {
   year?: number | null;
   poster_url?: string | null;
   status: 'pending' | 'approved' | 'denied' | 'failed';
+  stage: 'pending_review' | 'denied' | 'needs_attention' | 'unknown' | 'searching' | 'downloading' | 'importing' | 'waiting_for_library' | 'available';
+  stage_message: string;
   availability?: MediaAvailability;
   requested_by?: string | null;
   created_at?: string;
   note?: string | null;
+}
+
+export type PreflightVerdict = 'ready' | 'warning' | 'blocked';
+export interface RequestPreflight {
+  verdict: PreflightVerdict;
+  checks: Array<{
+    name: string;
+    status: PreflightVerdict;
+    message: string;
+    fix: string;
+  }>;
 }
 
 export interface MediaResult extends MediaItem {
@@ -261,6 +275,7 @@ export interface DownloadsResponse {
   items: QueueItem[];
   dl_speed?: number | null; // bytes/s
   up_speed?: number | null; // bytes/s
+  updated_at?: string;
 }
 
 // Health overview response

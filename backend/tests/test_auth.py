@@ -30,9 +30,10 @@ async def test_short_password_rejected(client):
 
 
 async def test_login_logout_and_rate_limit(client):
-    from app.core.security import login_limiter
+    from app.core.security import login_ip_limiter, login_limiter
 
     login_limiter._fails.clear()
+    login_ip_limiter._fails.clear()
     await make_admin(client)
     await client.post("/api/auth/logout", headers=CSRF)
     assert (await client.get("/api/auth/me")).status_code == 401
@@ -46,6 +47,53 @@ async def test_login_logout_and_rate_limit(client):
     assert ok.status_code == 200
     cookie = ok.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie
+
+
+async def test_login_rate_limit_cannot_be_bypassed_with_new_usernames(client):
+    from app.core.security import login_ip_limiter, login_limiter
+
+    login_limiter._fails.clear()
+    login_ip_limiter._fails.clear()
+    await make_admin(client)
+    for index in range(login_ip_limiter.limit):
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": f"unknown-{index}", "password": "wrong-password"},
+            headers=CSRF,
+        )
+        assert response.status_code == 401
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"username": "unknown-final", "password": "wrong-password"},
+        headers=CSRF,
+    )
+    assert response.status_code == 429
+    login_limiter._fails.clear()
+    login_ip_limiter._fails.clear()
+
+
+def test_login_rate_limiter_bounds_tracked_keys():
+    from app.core.security import LoginRateLimiter
+
+    limiter = LoginRateLimiter(limit=2, max_keys=3)
+    for index in range(10):
+        limiter.fail(f"client-{index}")
+
+    assert len(limiter._fails) == 3
+
+
+def test_login_rate_limiter_expires_old_attempts(monkeypatch):
+    from app.core.security import LoginRateLimiter
+
+    moments = iter((0.0, 2.0))
+    monkeypatch.setattr("app.core.security.time.monotonic", lambda: next(moments))
+    limiter = LoginRateLimiter(limit=1, window=1)
+    limiter.fail("client")
+
+    limiter.check("client")
+
+    assert "client" not in limiter._fails
 
 
 async def test_user_cannot_reach_admin_routes_or_others_requests(client):

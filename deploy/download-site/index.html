@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080d1b" />
+    <title>Get Unifierr</title>
+    <meta name="description" content="Preview downloads for the Unifierr media automation client." />
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #080d1b; color: #eef2ff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% -20%, #29266b 0, #080d1b 55%); }
+      main { width: min(100% - 32px, 960px); margin: 0 auto; padding: 56px 0 72px; }
+      header { margin-bottom: 36px; }
+      .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 750; letter-spacing: -.03em; }
+      .mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: #6256ee; font-size: 19px; }
+      h1 { max-width: 700px; margin: 32px 0 12px; font-size: clamp(36px, 7vw, 58px); letter-spacing: -.055em; line-height: 1.03; }
+      .lead { max-width: 640px; color: #aab6d2; font-size: 17px; line-height: 1.65; }
+      .notice { margin: 28px 0; padding: 16px 18px; border: 1px solid #594a22; border-radius: 14px; background: #211a0e; color: #f5d891; line-height: 1.55; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 16px; margin: 28px 0; }
+      .card { display: flex; min-height: 220px; flex-direction: column; align-items: flex-start; padding: 22px; border: 1px solid #202c45; border-radius: 18px; background: #10182a; }
+      .card h2 { margin: 18px 0 6px; font-size: 19px; }
+      .muted { color: #9ba9c6; line-height: 1.55; }
+      .tag { color: #aebcff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+      .button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; margin-top: auto; padding: 0 16px; border-radius: 10px; background: #6256ee; color: white; font-weight: 700; text-decoration: none; }
+      .button:hover { background: #756af7; }
+      .button.disabled { background: #26324a; color: #a0abc1; cursor: not-allowed; }
+      .section { margin-top: 46px; padding-top: 28px; border-top: 1px solid #202c45; }
+      .section h2 { font-size: 22px; }
+      code { color: #c7d2fe; }
+      footer { margin-top: 42px; color: #7f8eaa; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand"><span class="mark" aria-hidden="true">✦</span> Unifierr</div>
+        <h1>Your media server, made simple.</h1>
+        <p class="lead">Install a preview client, then connect it to your Unifierr server.</p>
+      </header>
+
+      <div class="notice"><strong>Preview software:</strong> These builds are for testing. The Windows installer is unsigned, and the Android APK is a debug build for ARM64 devices.</div>
+<p class="muted">Release downloads currently require access to this private GitHub repository. Public download hosting is not configured yet.</p>
+
+      <section class="grid" aria-label="Client downloads">
+        <article class="card">
+          <span class="tag">Windows · x64</span>
+          <h2>Windows client</h2>
+          <p class="muted">Installer for 64-bit Windows PCs. Windows may show a publisher warning because this preview is not code-signed.</p>
+          <a class="button" href="https://github.com/simplyzubair/unifierr/releases/download/client-v0.1.0/unifierr-windows-preview-0.1.0.exe">Download Windows installer</a>
+        </article>
+        <article class="card">
+          <span class="tag">Android · ARM64</span>
+          <h2>Android client</h2>
+          <p class="muted">Test APK for ARM64 Android devices. You may need to allow installation from your browser or file manager.</p>
+          <a class="button" href="https://github.com/simplyzubair/unifierr/releases/download/client-v0.1.0/unifierr-android-arm64-preview-0.1.0.apk">Download Android APK</a>
+        </article>
+        <article class="card">
+          <span class="tag">macOS</span>
+          <h2>Mac client</h2>
+          <p class="muted">Preview disk image. macOS may warn because this app is not signed or notarized.</p>
+          <a class="button" href="https://github.com/simplyzubair/unifierr/releases/download/client-v0.1.0/unifierr-macos-preview-0.1.0.dmg">Download macOS disk image</a>
+        </article>
+      </section>
+
+      <section class="section">
+        <h2>NAS server</h2>
+        <p class="muted">A beginner-ready server installer is not available yet. The current Synology trial depends on a locally built image and NAS-specific Docker networking, so its private configuration is not published here. A Compose file alone would fail on a fresh NAS until a server image is released.</p>
+        <p class="muted">See the <a href="SERVER-SETUP.md">server package status and setup notes</a>.</p>
+      </section>
+
+      <section class="section">
+        <h2>Verify your download</h2>
+        <p class="muted">SHA-256 checksums: <a href="https://github.com/simplyzubair/unifierr/releases/download/client-v0.1.0/SHA256SUMS.txt">view checksums</a>.</p>
+      </section>
+
+      <footer>Unifierr preview · Use only with media and sources you are authorized to access.</footer>
+    </main>
+  </body>
+</html>

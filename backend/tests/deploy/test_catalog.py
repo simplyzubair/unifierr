@@ -26,7 +26,7 @@ def test_catalog_contains_all_services() -> None:
             assert spec.volumes == {}
             assert "NET_ADMIN" in spec.cap_add
             assert spec.devices == ["/dev/net/tun:/dev/net/tun"]
-            assert "8080/tcp" in spec.published_ports and "9696/tcp" in spec.published_ports
+            assert spec.published_ports == {"6881/tcp": 6881, "6881/udp": 6881}
             continue
         assert spec.image.startswith("lscr.io/linuxserver/")
         assert "{root}/data" in spec.volumes
@@ -36,6 +36,7 @@ def test_catalog_contains_all_services() -> None:
         assert "PUID" in spec.env
         assert "PGID" in spec.env
         assert "TZ" in spec.env
+        assert spec.env.get("UMASK") == "002"
         assert len(spec.description) > 10
 
 

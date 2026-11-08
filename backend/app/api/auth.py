@@ -15,6 +15,7 @@ from app.core.security import (
     destroy_session,
     destroy_user_sessions,
     hash_password,
+    login_ip_limiter,
     login_limiter,
     require_admin,
     validate_new_password,
@@ -79,6 +80,8 @@ async def setup_status(db: AsyncSession = Depends(get_db)) -> dict:
 
 @router.post("/auth/bootstrap", response_model=UserOut)
 async def bootstrap(body: Credentials, response: Response, db: AsyncSession = Depends(get_db)):
+    if (await db.execute(select(func.count(User.id)))).scalar_one() > 0:
+        raise HTTPException(409, detail="An admin account already exists. Please sign in.")
     validate_new_password(body.password)
     password_hash = hash_password(body.password)  # slow; do it outside the lock
     # One lock + re-check: two simultaneous first-run requests can never both create an admin.
@@ -94,13 +97,16 @@ async def bootstrap(body: Credentials, response: Response, db: AsyncSession = De
 
 @router.post("/auth/login", response_model=UserOut)
 async def login(body: Credentials, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    key = f"{request.client.host if request.client else '?'}:{body.username.lower()}"
-    login_limiter.check(key)
+    ip_key = request.client.host if request.client else "unknown-client"
+    account_key = body.username
+    login_ip_limiter.check(ip_key)
+    login_limiter.check(account_key)
     user = (await db.execute(select(User).where(User.username == body.username))).scalar_one_or_none()
     if user is None or not verify_password(user.password_hash, body.password):
-        login_limiter.fail(key)
+        login_ip_limiter.fail(ip_key)
+        login_limiter.fail(account_key)
         raise HTTPException(401, detail="Wrong username or password.")
-    login_limiter.reset(key)
+    login_limiter.reset(account_key)
     _set_cookie(response, await create_session(db, user))
     return _out(user)
 

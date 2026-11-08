@@ -1,0 +1,34 @@
+# Separate Unifierr instance for the SkillsGeek Synology NAS.
+# It joins the existing media network for service discovery; it does not
+# recreate, rename, or reconfigure the existing media containers.
+services:
+  unifierr:
+    image: unifierr:local
+    container_name: unifierr
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8484:8484"
+    environment:
+      UNIFIERR_ROOT: /volume1/docker/unifierr/data
+      PUID: "1026"
+      PGID: "100"
+      TZ: Asia/Karachi
+      UNIFIERR_SECURE_COOKIES: "true"
+    volumes:
+      - ./config:/config
+      - /volume1/docker/unifierr/data:/volume1/docker/unifierr/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only access lets Unifierr find existing API keys for adoption.
+      - /volume1/docker/media-stack/config/radarr:/volume1/docker/media-stack/config/radarr:ro
+      - /volume1/docker/media-stack/config/sonarr:/volume1/docker/media-stack/config/sonarr:ro
+      - /volume1/docker/media-stack/config/prowlarr:/volume1/docker/media-stack/config/prowlarr:ro
+      - /volume1/docker/media-stack/config/bazarr:/volume1/docker/media-stack/config/bazarr:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - media-stack
+
+networks:
+  media-stack:
+    external: true
+    name: media-stack

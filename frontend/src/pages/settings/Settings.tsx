@@ -75,7 +75,8 @@ export const Settings: React.FC = () => {
     trash_profiles: false,
   });
   const [networkSecrets, setNetworkSecrets] = useState({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
-  const [networkSaving, setNetworkSaving] = useState(false);
+const [networkSaving, setNetworkSaving] = useState(false);
+const [showUsenetClients, setShowUsenetClients] = useState(false);
 
   // ---------------- USERS TAB ----------------
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -107,6 +108,7 @@ export const Settings: React.FC = () => {
     try {
       const settings = await systemApi.getSettings();
       setNetworkSettings(settings);
+      setShowUsenetClients(settings.download_client === 'sabnzbd' || settings.download_client === 'nzbget');
       setNetworkForm({
         vpn_enabled: settings.vpn_enabled ?? false,
         vpn_provider: settings.vpn_provider ?? '',
@@ -304,8 +306,8 @@ export const Settings: React.FC = () => {
       setError(new Error('New passwords do not match.'));
       return;
     }
-    if (newPassword.length < 8) {
-      setError(new Error('New password must be at least 8 characters long.'));
+    if (newPassword.length < 12) {
+      setError(new Error('New password must be at least 12 characters long.'));
       return;
     }
 
@@ -717,16 +719,21 @@ export const Settings: React.FC = () => {
           <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Download client</h3>
-              <p className="mt-0.5 text-xs text-slate-500">Which download client Radarr and Sonarr should send releases to.</p>
+<p className="mt-0.5 text-xs text-slate-500">Choose how downloads work. qBittorrent is for torrents; SABnzbd and NZBGet are optional Usenet clients and need a Usenet provider.</p>
               <select
                 value={networkForm.download_client}
                 onChange={(event) => setNetworkForm({ ...networkForm, download_client: event.target.value as 'qbittorrent' | 'sabnzbd' | 'nzbget' })}
                 className="mt-2 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white"
               >
-                <option value="qbittorrent">qBittorrent (torrents)</option>
-                <option value="sabnzbd">SABnzbd (Usenet)</option>
-                <option value="nzbget">NZBGet (Usenet)</option>
-              </select>
+<option value="qbittorrent">qBittorrent (torrents)</option>
+{showUsenetClients && <>
+  <option value="sabnzbd">SABnzbd (Usenet)</option>
+  <option value="nzbget">NZBGet (Usenet)</option>
+  </>}
+</select>
+<button type="button" onClick={() => setShowUsenetClients((shown) => !shown)} className="mt-1 text-xs text-brand-600 hover:underline dark:text-brand-400">
+  {showUsenetClients ? 'Hide optional Usenet clients' : 'Show optional Usenet clients'}
+</button>
             </div>
 
             <label className="flex items-start gap-3 cursor-pointer">
@@ -827,7 +834,7 @@ export const Settings: React.FC = () => {
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                New Password (at least 8 characters)
+                New Password (at least 12 characters)
               </label>
               <input
                 type="password"

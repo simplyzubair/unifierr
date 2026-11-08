@@ -448,6 +448,60 @@ async def test_prowlarr_add_indexer(mock):
     assert idx.id == 10
 
 
+async def test_prowlarr_schema_preserves_dropdown_and_checkbox_options(mock):
+    mock.get(f"{PROWLARR}/api/v1/indexer/schema").respond(json=[
+        {
+            "name": "Example",
+            "definitionName": "Example",
+            "fields": [
+                {
+                    "name": "sort",
+                    "label": "Sort",
+                    "type": "select",
+                    "value": 2,
+                    "selectOptions": [
+                        {"value": 1, "name": "size"},
+                        {"value": 2, "name": "date"},
+                    ],
+                },
+                {"name": "includeArchived", "label": "Include archived", "type": "checkbox", "value": True},
+            ],
+        },
+    ])
+
+    async with prowlarr() as adapter:
+        (schema,) = await adapter.indexer_schemas()
+
+    assert schema.required_fields[0]["selectOptions"] == [
+        {"value": 1, "name": "size"},
+        {"value": 2, "name": "date"},
+    ]
+    assert schema.required_fields[1]["value"] is True
+
+
+async def test_prowlarr_add_indexer_uses_first_provider_url(mock):
+    schema = {
+        "name": "Internet Archive",
+        "definitionName": "Internet Archive",
+        "implementation": "Cardigann",
+        "protocol": "torrent",
+        "enable": False,
+        "appProfileId": 0,
+        "indexerUrls": ["https://archive.org/"],
+        "fields": [{"name": "baseUrl", "type": "select", "selectOptionsProviderAction": "getUrls"}],
+    }
+    mock.get(f"{PROWLARR}/api/v1/indexer").respond(json=[])
+    mock.get(f"{PROWLARR}/api/v1/indexer/schema").respond(json=[schema])
+    mock.get(f"{PROWLARR}/api/v1/appprofile").respond(json=[{"id": 1}])
+    post = mock.post(f"{PROWLARR}/api/v1/indexer").respond(json={**schema, "id": 11, "enable": True})
+
+    async with prowlarr() as adapter:
+        indexer = await adapter.add_indexer("Internet Archive")
+
+    assert indexer.id == 11
+    assert field(body(post), "baseUrl") == "https://archive.org/"
+
+
 async def test_prowlarr_add_indexer_existing_and_unknown(mock):
     mock.get(f"{PROWLARR}/api/v1/indexer").respond(json=[
         {"id": 1, "name": "1337x", "definitionName": "1337x", "protocol": "torrent", "enable": True}])

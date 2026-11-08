@@ -19,30 +19,42 @@ import {
   Tv,
 } from 'lucide-react';
 
+const isMetadataProgress = (message: string) => /downloading.*metadata|metadata.*downloading/i.test(message);
+
 export const Downloads: React.FC = () => {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [dlSpeed, setDlSpeed] = useState<number | null>(null);
   const [upSpeed, setUpSpeed] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [refreshIssue, setRefreshIssue] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = useState<QueueItem | null>(null);
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchingRef = useRef(false);
 
   const fetchDownloads = async (isFirst = false) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
       const data = await downloadsApi.getDownloads();
       setItems(data.items || []);
       setDlSpeed(data.dl_speed ?? null);
       setUpSpeed(data.up_speed ?? null);
-      if (isFirst) setLoading(false);
+      setUpdatedAt(data.updated_at ?? new Date().toISOString());
+      setRefreshIssue(false);
     } catch (err: unknown) {
       if (isFirst) {
-        setError(err as Error);
-        setLoading(false);
+        setError(err instanceof Error ? err : new Error('Could not load downloads.'));
+      } else {
+        setRefreshIssue(true);
       }
+    } finally {
+      fetchingRef.current = false;
+      if (isFirst) setLoading(false);
     }
   };
 
@@ -113,6 +125,27 @@ export const Downloads: React.FC = () => {
     return `${s}s`;
   };
 
+  const activeCount = items.filter((item) =>
+    ['downloading', 'stalled', 'checking', 'importing'].includes(item.state),
+  ).length;
+  const queuedCount = items.filter((item) => item.state === 'queued').length;
+  const priority: Record<QueueItem['state'], number> = {
+    downloading: 0,
+    stalled: 1,
+    checking: 2,
+    importing: 3,
+    queued: 4,
+    paused: 5,
+    error: 6,
+    unknown: 7,
+    seeding: 8,
+    completed: 9,
+  };
+  const sortedItems = [...items].sort((a, b) => priority[a.state] - priority[b.state]);
+  const updatedLabel = updatedAt
+    ? new Date(updatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : 'not updated yet';
+
   return (
     <div className="space-y-6">
       {/* Header & Speed Totals */}
@@ -123,7 +156,7 @@ export const Downloads: React.FC = () => {
             Active Downloads
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Real-time download activity across qBittorrent, Radarr, and Sonarr.
+            Live download activity. Updated {updatedLabel}.
           </p>
         </div>
 
@@ -140,19 +173,24 @@ export const Downloads: React.FC = () => {
           </div>
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
           <div className="text-xs font-medium text-slate-500">
-            {items.length} {items.length === 1 ? 'task' : 'tasks'}
+            {activeCount} active · {queuedCount} queued
           </div>
         </div>
       </div>
 
       <ErrorCard error={error} onDismiss={() => setError(null)} />
+      {refreshIssue && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          Live updates are temporarily unavailable. Showing the last successful update from {updatedLabel}. Check the download client connection in Settings.
+        </div>
+      )}
 
       {/* Downloads List */}
       {loading ? (
         <TableSkeleton rows={4} />
       ) : items.length > 0 ? (
         <div className="space-y-3">
-          {items.map((item) => (
+          {sortedItems.map((item) => (
             <div
               key={item.id}
               className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition space-y-3"
@@ -241,8 +279,10 @@ export const Downloads: React.FC = () => {
               </div>
 
               {item.error && (
-                <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded-lg">
-                  {item.error}
+                <div className={isMetadataProgress(item.error)
+                  ? 'text-xs text-sky-800 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/40 p-2 rounded-lg'
+                  : 'text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded-lg'}>
+                  {isMetadataProgress(item.error) ? `Preparing download: ${item.error}` : item.error}
                 </div>
               )}
             </div>

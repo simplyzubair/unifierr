@@ -18,6 +18,8 @@ from app.core.config import get_settings
 from app.core.crypto import decrypt, encrypt
 from app.core.db import sessionmaker
 from app.core.errors import UnifierrError
+from app.core.safe_http import SafeAsyncClient
+from app.core.service_url import validate_service_url
 from app.models import Service
 from app.services.common import get_all_settings, get_service, log_event, make_adapter, set_settings
 from app.services.jobs import Job
@@ -49,7 +51,7 @@ def appdata_dir(root: str, kind: ServiceKind) -> Path:
 async def wait_until_up(url: str, *, max_wait: float = 180, job: Job | None = None) -> bool:
     """Poll an HTTP URL until it answers with any status below 500 (401 also means 'up')."""
     deadline = asyncio.get_running_loop().time() + max_wait
-    async with httpx.AsyncClient(timeout=5, follow_redirects=False) as client:
+    async with SafeAsyncClient(timeout=5, follow_redirects=False) as client:
         while asyncio.get_running_loop().time() < deadline:
             try:
                 r = await client.get(url)
@@ -59,7 +61,7 @@ async def wait_until_up(url: str, *, max_wait: float = 180, job: Job | None = No
                 pass
             await asyncio.sleep(3)
     if job:
-        job.say(f"Gave up waiting for {url}")
+        job.say("Gave up waiting for the service to respond.")
     return False
 
 
@@ -294,6 +296,13 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
         raise UnifierrError(f"Could not find {DISPLAY[kind]}",
                             explanation="It was not found in Docker or on the usual network addresses.",
                             fix="Open Advanced and type its address, e.g. http://192.168.1.10:7878")
+    try:
+        base_url = validate_service_url(base_url)
+        if internal_url:
+            internal_url = validate_service_url(internal_url)
+    except ValueError as exc:
+        raise UnifierrError("Service address is not allowed", explanation=str(exc),
+                            fix="Use a local service address or an HTTPS address for a remote server.") from exc
     if not api_key and config_path and kind in ARR_KINDS | {ServiceKind.bazarr, ServiceKind.sabnzbd}:
         if kind == ServiceKind.bazarr:
             reader = keys.read_bazarr_api_key
@@ -349,7 +358,7 @@ async def adopt(db: AsyncSession, kind: ServiceKind, *, base_url: str | None, ap
     svc = await save_service(db, kind, base_url=base_url, internal_url=internal_url, api_key=api_key,
                              username=username, password=password, managed=False, container_name=container_name,
                              name=name)
-    await log_event(db, "setup", f"Connected existing {svc.name} at {base_url}.")
+    await log_event(db, "setup", f"Connected existing {svc.name}.")
     return svc
 
 

@@ -113,9 +113,9 @@ HEALTH_HELP: dict[str, tuple[str, str]] = {
         "Some indexers (the sites that are searched for downloads) failed recently, so they are paused for a while.",
         "Usually temporary. Open Indexers in Unifierr and run a test; remove or replace indexers that keep failing.",
     ),
-    "IndexerLongTermStatusCheck": (
-        "Some indexers have been failing for a long time and were switched off.",
-        "Test them in Indexers. If they still fail, the site may be down or blocked: replace them with another one.",
+"IndexerLongTermStatusCheck": (
+    "One search source has been paused after repeated failures. Other working sources can still be used.",
+    "Open Indexers and retry it later. Remove it only if it keeps failing.",
     ),
     "IndexerRssCheck": (
         "No indexer is set up for automatic new-release checks, so new releases will not be grabbed on their own.",

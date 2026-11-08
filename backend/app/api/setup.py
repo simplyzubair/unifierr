@@ -1,13 +1,14 @@
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.adapters.base import ServiceKind
 from app.core.db import get_db
 from app.core.security import require_admin
+from app.core.service_url import validate_service_url
 from app.models import User
 from app.services import installer, wiring
 from app.services.common import get_setting, log_event, set_settings
@@ -35,6 +36,11 @@ class AdoptIn(BaseModel):
     api_key: str | None = Field(default=None, max_length=255)
     username: str | None = Field(default=None, max_length=128)
     password: str | None = Field(default=None, max_length=256)
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        return validate_service_url(value) if value else value
 
 
 @router.get("/setup/environment")

@@ -56,13 +56,30 @@ elif [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
     cp "$SCRIPT_DIR/docker-compose.yml" "$INSTALL_DIR/docker-compose.yml"
 else
     echo "Downloading docker-compose.yml..."
-    COMPOSE_URL="https://raw.githubusercontent.com/simplyzubair/unifierr/main/deploy/docker-compose.yml"
+    COMPOSE_URL="https://raw.githubusercontent.com/simplyzubair/unifierr/feat/unifierr-mvp/deploy/docker-compose.yml"
     curl -fsSL "$COMPOSE_URL" -o "$INSTALL_DIR/docker-compose.yml"
 fi
 
 # 5. Create default .env if missing
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo "Configuring default environment (.env)..."
+    STORAGE_ROOT="${UNIFIERR_ROOT:-/srv/unifierr}"
+    case "$STORAGE_ROOT" in
+        /*) ;;
+        *)
+            echo "Error: UNIFIERR_ROOT must be an absolute host path." >&2
+            exit 1
+            ;;
+    esac
+    case "$STORAGE_ROOT" in
+        *$'\n'*|*$'\r'*)
+            echo "Error: UNIFIERR_ROOT cannot contain newline characters." >&2
+            exit 1
+            ;;
+    esac
+    # Quote the Compose .env value so spaces and dollar signs remain literal.
+    # Compose represents a literal apostrophe inside single quotes as \' .
+    STORAGE_ROOT_ENV=${STORAGE_ROOT//\'/\\\'}
     DETECTED_UID="${SUDO_UID:-$(id -u)}"
     DETECTED_GID="${SUDO_GID:-$(id -g)}"
     if [ "$DETECTED_UID" = "0" ]; then
@@ -81,7 +98,9 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     DETECTED_TZ="${DETECTED_TZ:-UTC}"
 
     cat <<EOF > "$INSTALL_DIR/.env"
-UNIFIERR_ROOT=/srv/unifierr
+UNIFIERR_ROOT='${STORAGE_ROOT_ENV}'
+UNIFIERR_BIND_ADDRESS=127.0.0.1
+UNIFIERR_ALLOWED_SERVICE_HOSTS=
 PUID=${DETECTED_UID}
 PGID=${DETECTED_GID}
 TZ=${DETECTED_TZ}
@@ -95,18 +114,39 @@ if ! $COMPOSE_CMD pull; then
     echo "Error: could not download the Unifierr image." >&2
     echo "Check your internet connection. If no release has been published yet, build from source:" >&2
     echo "  git clone https://github.com/simplyzubair/unifierr && cd unifierr" >&2
-    echo "  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build" >&2
+    echo "  docker compose --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build" >&2
     exit 1
 fi
 $COMPOSE_CMD up -d
 
-# 7. Print completion message and URL
-HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")"
+# 7. Confirm the app is actually healthy before telling the user it's ready.
+echo "Waiting for Unifierr to pass its health check..."
+HEALTH_STATUS=""
+for attempt in $(seq 1 45); do
+    HEALTH_STATUS="$(docker inspect --format '{{.State.Health.Status}}' unifierr 2>/dev/null || true)"
+    case "$HEALTH_STATUS" in
+        healthy) break ;;
+        unhealthy) break ;;
+    esac
+    sleep 2
+done
+
+if [ "$HEALTH_STATUS" != "healthy" ]; then
+    echo "Error: Unifierr did not become healthy (status: ${HEALTH_STATUS:-unknown})." >&2
+    echo "The container was left in place. Check it with:" >&2
+    echo "  cd '$INSTALL_DIR' && $COMPOSE_CMD logs --tail 80 unifierr" >&2
+    exit 1
+fi
+
+# 8. Explain the safe default bind and how to reach the interface.
 echo ""
 echo "=================================================="
-echo "    Unifierr is running! Access the web UI at:    "
-echo "        http://${HOST_IP:-localhost}:8484         "
+echo "    Unifierr is healthy and ready.                 "
+echo "    Web port is bound to NAS loopback (8484).      "
+echo "    For other devices, use an HTTPS reverse proxy. "
 echo "=================================================="
+echo "Point the proxy to http://127.0.0.1:8484 on the NAS."
+echo "See the Synology guide or SECURITY.md for secure access steps."
 echo "To view logs:  cd $INSTALL_DIR && $COMPOSE_CMD logs -f"
 echo "To stop:       cd $INSTALL_DIR && $COMPOSE_CMD down"
 echo "=================================================="

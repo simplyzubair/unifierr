@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080d1c" />
+  <title>Connect to Unifierr</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #080d1c;
+      color: #f7f8ff;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 1.25rem;
+      background: radial-gradient(ellipse at top, #17213d 0%, #080d1c 60%);
+    }
+
+    main {
+      width: min(100%, 36rem);
+      padding: clamp(1.25rem, 5vw, 2.25rem);
+      border: 1px solid #29344d;
+      border-radius: 1.25rem;
+      background: #10182b;
+      box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 28%);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: 1.75rem;
+      font-size: 1rem;
+      font-weight: 750;
+      letter-spacing: .01em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 2.5rem;
+      height: 2.5rem;
+      place-items: center;
+      border-radius: .8rem;
+      background: #6256f5;
+      color: white;
+      font-size: 1.25rem;
+    }
+
+    .eyebrow {
+      margin: 0 0 .5rem;
+      color: #a5a0ff;
+      font-size: .75rem;
+      font-weight: 750;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.65rem, 6vw, 2rem);
+      line-height: 1.2;
+    }
+
+    .intro { margin: .65rem 0 1.5rem; color: #aab7d2; }
+
+    label { display: block; margin-bottom: .45rem; font-weight: 650; }
+
+    .input-row { display: flex; gap: .65rem; }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      min-height: 3rem;
+      padding: .7rem .85rem;
+      border: 1px solid #3b4967;
+      border-radius: .65rem;
+      background: #080d1c;
+      color: #f7f8ff;
+      font: inherit;
+    }
+
+    input::placeholder { color: #7786a5; }
+
+    button {
+      min-height: 3rem;
+      padding: .65rem 1rem;
+      border: 0;
+      border-radius: .65rem;
+      background: #6256f5;
+      color: white;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { background: #756bff; }
+
+    button.secondary {
+      min-height: auto;
+      padding: .25rem 0;
+      background: transparent;
+      color: #aab7d2;
+      font-size: .875rem;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: .2em;
+    }
+
+    input:focus-visible, button:focus-visible {
+      outline: 3px solid #a5a0ff;
+      outline-offset: 3px;
+    }
+
+    .help-text { margin: .5rem 0 0; color: #8797b6; font-size: .875rem; }
+
+    #connection-status {
+      min-height: 1.5rem;
+      margin: .5rem 0 0;
+      color: #ffb9b9;
+      font-size: .9rem;
+    }
+
+    .tips {
+      margin-top: 1.5rem;
+      padding: 1rem 1.1rem;
+      border: 1px solid #29344d;
+      border-radius: .8rem;
+      background: #0c1324;
+    }
+
+    h2 { margin: 0 0 .45rem; font-size: 1rem; }
+    ul { margin: 0; padding-left: 1.25rem; color: #aab7d2; }
+    li + li { margin-top: .35rem; }
+
+    .saved-address {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      margin-top: 1rem;
+      color: #8797b6;
+      font-size: .875rem;
+    }
+
+    @media (max-width: 28rem) {
+      .input-row { flex-direction: column; }
+      .input-row button { width: 100%; }
+      .saved-address { align-items: flex-start; flex-direction: column; gap: .25rem; }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      button { transition: background-color 120ms ease; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand" aria-label="Unifierr client">
+      <span class="brand-mark" aria-hidden="true">U</span>
+      <span>Unifierr</span>
+    </div>
+
+    <p class="eyebrow">Connect your device</p>
+    <h1>Connect to your server</h1>
+    <p class="intro">Enter the secure web address for the Unifierr server running on your NAS or computer.</p>
+
+    <form id="connection-form" novalidate>
+      <label for="server-address">Server HTTPS address</label>
+      <div class="input-row">
+        <input
+          id="server-address"
+          name="server-address"
+          type="url"
+          inputmode="url"
+          autocomplete="url"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="https://unifierr.example.com"
+          aria-describedby="address-help connection-status"
+          required
+        />
+        <button type="submit">Connect</button>
+      </div>
+      <p class="help-text" id="address-help">Use the full address, including <code>https://</code>. You can include a port or path if your server uses one.</p>
+      <p id="connection-status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="tips" aria-labelledby="before-connect">
+      <h2 id="before-connect">Before you connect</h2>
+      <ul>
+        <li>Your Unifierr server must be running and reachable.</li>
+        <li>For a private NAS, connect this device to the same Tailscale network first.</li>
+        <li>The server address must use HTTPS with a certificate this device trusts.</li>
+      </ul>
+    </section>
+
+    <div class="saved-address">
+      <span>Your last server address is saved on this device only.</span>
+      <button class="secondary" id="clear-address" type="button">Clear saved address</button>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const storageKey = "unifierr.serverAddress";
+      const form = document.querySelector("#connection-form");
+      const addressInput = document.querySelector("#server-address");
+      const status = document.querySelector("#connection-status");
+      const clearButton = document.querySelector("#clear-address");
+
+      try {
+        addressInput.value = window.localStorage.getItem(storageKey) ?? "";
+      } catch {
+        // Private browsing or device policy can disable local storage.
+      }
+
+      function validateAddress(value) {
+        const input = value.trim();
+
+        if (!input) {
+          throw new Error("Enter your server's HTTPS address.");
+        }
+        if (!/^https:\/\//i.test(input)) {
+          throw new Error("The address must start with https://.");
+        }
+        if (/[?#]/.test(input)) {
+          throw new Error("Remove the question mark or # part from the address, then try again.");
+        }
+
+        const authority = input.match(/^https:\/\/([^/?#]*)/i)?.[1] ?? "";
+
+        let url;
+        try {
+          url = new URL(input);
+        } catch {
+          throw new Error("That address does not look right. Check it and try again.");
+        }
+
+        if (url.protocol !== "https:") {
+          throw new Error("Use an HTTPS address to keep the connection secure.");
+        }
+        if (!url.hostname || url.username || url.password || authority.includes("@")) {
+          throw new Error("Enter a server address without a username or password.");
+        }
+
+        return url.href;
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        status.textContent = "";
+
+        let serverAddress;
+        try {
+          serverAddress = validateAddress(addressInput.value);
+        } catch (error) {
+          status.textContent = error.message;
+          addressInput.focus();
+          return;
+        }
+
+        try {
+          window.localStorage.setItem(storageKey, serverAddress);
+        } catch {
+          status.textContent = "Couldn't save this address on the device, but you can still connect.";
+        }
+
+        window.location.assign(serverAddress);
+      });
+
+      clearButton.addEventListener("click", () => {
+        try {
+          window.localStorage.removeItem(storageKey);
+        } catch {
+          // Nothing else is needed if local storage is unavailable.
+        }
+        addressInput.value = "";
+        status.textContent = "Saved server address cleared.";
+        addressInput.focus();
+      });
+    })();
+  </script>
+</body>
+</html>

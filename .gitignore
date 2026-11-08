@@ -5,6 +5,13 @@ __pycache__/
 .ruff_cache/
 node_modules/
 frontend/dist/
+client/node_modules/
+client/src-tauri/target/
+client/src-tauri/gen/
+client/src-tauri/binaries/
+deploy/download-site/files/*.exe
+deploy/download-site/files/*.apk
+deploy/download-site/files/*.dmg
 backend/app/static/
 /data/
 *.db

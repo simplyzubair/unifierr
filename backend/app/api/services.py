@@ -1,7 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -11,6 +11,7 @@ from app.core.db import get_db
 from app.core.errors import UnifierrError
 from app.core.logging import redact
 from app.core.security import require_admin
+from app.core.service_url import validate_service_url
 from app.models import Service
 from app.services.common import log_event
 from app.services.installer import docker_manager
@@ -26,6 +27,11 @@ class ServicePatch(BaseModel):
     username: str | None = Field(default=None, max_length=128)
     password: str | None = Field(default=None, max_length=256)
     enabled: bool | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        return validate_service_url(value) if value else value
 
 
 async def _get(db: AsyncSession, service_id: int) -> Service:

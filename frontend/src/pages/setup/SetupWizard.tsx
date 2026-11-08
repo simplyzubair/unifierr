@@ -26,20 +26,19 @@ import {
   RefreshCw,
   Sparkles,
   Server,
-  FolderCheck,
   Radio,
   FileCode,
   Sliders,
 } from 'lucide-react';
 
 const STEPS = [
-  'Welcome & Environment',
-  'Storage Layout',
-  'Apps & Services',
-  'Network & Plex',
-  'Installing Apps',
-  'Connecting Stack',
-  'Ready to Stream',
+  'Welcome',
+  'Storage',
+  'Apps',
+  'Optional settings',
+  'Install',
+  'Connect',
+  'Ready',
 ];
 
 const ALL_APPS: Array<{ kind: ServiceKind; name: string; desc: string; defaultInstall: boolean }> = [
@@ -47,8 +46,8 @@ const ALL_APPS: Array<{ kind: ServiceKind; name: string; desc: string; defaultIn
   { kind: 'sonarr', name: 'Sonarr', desc: 'Tracks your favorite TV shows and fetches new episodes.', defaultInstall: true },
   { kind: 'prowlarr', name: 'Prowlarr', desc: 'Syncs torrent trackers and indexers to all your apps.', defaultInstall: true },
   { kind: 'qbittorrent', name: 'qBittorrent', desc: 'Fast, secure torrent download client handling your files.', defaultInstall: true },
-  { kind: 'sabnzbd', name: 'SABnzbd', desc: 'Reliable Usenet download client for NZB files.', defaultInstall: false },
-  { kind: 'nzbget', name: 'NZBGet', desc: 'Lightweight, fast Usenet download client.', defaultInstall: false },
+  { kind: 'sabnzbd', name: 'SABnzbd', desc: 'Optional: for Usenet downloads. Requires a Usenet provider.', defaultInstall: false },
+  { kind: 'nzbget', name: 'NZBGet', desc: 'Optional: a lightweight Usenet download client. Requires a provider.', defaultInstall: false },
   { kind: 'bazarr', name: 'Bazarr', desc: 'Finds missing subtitles in any language automatically.', defaultInstall: true },
   { kind: 'jellyfin', name: 'Jellyfin', desc: 'Free, private streaming server for your personal media.', defaultInstall: true },
   { kind: 'plex', name: 'Plex', desc: 'Popular streaming server with wide device support.', defaultInstall: false },
@@ -68,6 +67,9 @@ export const SetupWizard: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [recommendedSetup, setRecommendedSetup] = useState(false);
+  const [adoptionWarnings, setAdoptionWarnings] = useState<string[]>([]);
+  const [recommendedProgress, setRecommendedProgress] = useState('');
 
   // Step 1: Environment
   const [envReport, setEnvReport] = useState<EnvironmentReport | null>(null);
@@ -77,7 +79,8 @@ export const SetupWizard: React.FC = () => {
   const [puid, setPuid] = useState(1000);
   const [pgid, setPgid] = useState(1000);
   const [timezone, setTimezone] = useState('Etc/UTC');
-  const [showAdvancedStorage, setShowAdvancedStorage] = useState(false);
+const [showAdvancedStorage, setShowAdvancedStorage] = useState(false);
+const [showUsenetOptions, setShowUsenetOptions] = useState(false);
   const [folderReport, setFolderReport] = useState<FolderReport | null>(null);
 
   // Step 3: Detection & Selection
@@ -170,7 +173,7 @@ export const SetupWizard: React.FC = () => {
   };
 
   // Step 2: Prepare storage
-  const handlePrepareStorage = async () => {
+  const handlePrepareStorage = async (continueAfterCheck = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -181,6 +184,10 @@ export const SetupWizard: React.FC = () => {
         timezone,
       });
       setFolderReport(report);
+      if (continueAfterCheck && report.writable) {
+        setCurrentStep(2);
+        await loadDetection();
+      }
     } catch (err: unknown) {
       setError(err as Error);
     } finally {
@@ -216,12 +223,12 @@ export const SetupWizard: React.FC = () => {
   };
 
   // Step 4: Install apps
-  const startInstall = async () => {
+  const startInstall = async (recommendedKinds?: ServiceKind[], isRecommended = false) => {
     setLoading(true);
     setError(null);
 
     // Filter to selected apps matching media server choice
-    const kindsToInstall = Array.from(selectedToInstall).filter((k) => {
+    const kindsToInstall = (recommendedKinds ?? Array.from(selectedToInstall)).filter((k) => {
       if (k === 'plex' && mediaServerChoice !== 'plex') return false;
       if (k === 'jellyfin' && mediaServerChoice !== 'jellyfin') return false;
       return true;
@@ -240,6 +247,10 @@ export const SetupWizard: React.FC = () => {
         setInstallJob(job);
         if (job.status === 'done') {
           setLoading(false);
+          if (isRecommended) {
+            setCurrentStep(5);
+            void startWire();
+          }
         } else if (job.status === 'failed') {
           setLoading(false);
           setError(new Error('App installation encountered a problem. Check step details below.'));
@@ -251,7 +262,67 @@ export const SetupWizard: React.FC = () => {
     }
   };
 
+  const startRecommendedSetup = async () => {
+    const detectedPlex = detectedApps.some((app) => app.kind === 'plex' && app.reachable_url);
+    if (mediaServerChoice === 'plex' && !detectedPlex) {
+      setError(new Error('Installing a new Plex server needs a short-lived claim token. Choose “More options: VPN and Plex setup” to enter it, or choose Jellyfin for automatic setup.'));
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setAdoptionWarnings([]);
+    setRecommendedSetup(true);
+    setRecommendedProgress('Checking detected apps…');
+    setInstallJob(null);
+    setWireJob(null);
+
+    const reachableApps = detectedApps.filter((app) => app.reachable_url && app.kind !== 'gluetun');
+    const connectedKinds = new Set<ServiceKind>();
+    const warnings = detectedApps
+      .filter((app) => app.kind !== 'gluetun' && !app.reachable_url)
+      .map((app) => `${app.kind}: found, but not reachable yet`);
+
+    for (const [index, app] of reachableApps.entries()) {
+      const appName = ALL_APPS.find((item) => item.kind === app.kind)?.name ?? app.kind;
+      setRecommendedProgress(`Connecting to ${appName} (${index + 1} of ${reachableApps.length})…`);
+      try {
+        await setupApi.adopt({ kind: app.kind, base_url: app.reachable_url ?? undefined });
+        connectedKinds.add(app.kind);
+      } catch {
+        warnings.push(`${app.kind}: detected, but automatic connection needs attention`);
+      }
+    }
+
+    setAdoptedKinds((previous) => new Set([...previous, ...connectedKinds]));
+    setAdoptionWarnings(warnings);
+    setRecommendedProgress('Preparing the recommended apps…');
+
+    const detectedKinds = new Set(detectedApps.map((app) => app.kind));
+    const recommendedKinds = ALL_APPS
+      .filter((app) => app.defaultInstall)
+      .map((app) => app.kind)
+      .filter((kind) => (kind !== 'plex' && kind !== 'jellyfin') || kind === mediaServerChoice)
+      .filter((kind) => !detectedKinds.has(kind));
+    setSelectedToInstall(new Set(recommendedKinds));
+
+    try {
+      await systemApi.updateSettings({
+        vpn_enabled: vpnEnabled,
+        vpn_provider: vpnProvider,
+        vpn_type: vpnType,
+        vpn_server_countries: vpnServerCountries,
+      });
+      setCurrentStep(4);
+      await startInstall(recommendedKinds, true);
+    } catch (err: unknown) {
+      setError(err as Error);
+      setLoading(false);
+    }
+  };
+
   const handleNetworkContinue = async () => {
+    setRecommendedSetup(false);
     setLoading(true);
     setError(null);
     try {
@@ -353,28 +424,41 @@ export const SetupWizard: React.FC = () => {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
+  const setupAttentionItems = [
+    ...adoptionWarnings,
+    ...(installJob?.steps ?? [])
+      .filter((step) => step.status === 'failed')
+      .map((step) => `${step.name}: ${step.fix ?? step.message ?? 'Check this app in Settings → Apps.'}`),
+    ...(wireJob?.steps ?? [])
+      .filter((step) => step.status === 'failed')
+      .map((step) => `${step.name}: ${step.fix ?? step.message ?? 'Check this app in Settings → Apps.'}`),
+  ];
+  const setupNeedsAttention = setupAttentionItems.length > 0;
+  const visibleSteps = recommendedSetup ? STEPS.filter((_, index) => index !== 3) : STEPS;
+  const visibleStepIndex = recommendedSetup && currentStep > 3 ? currentStep - 1 : currentStep;
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Stepper Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-            Setup Wizard • Step {currentStep + 1} of {STEPS.length}
+            Setup Wizard • Step {visibleStepIndex + 1} of {visibleSteps.length}
           </span>
           <span className="text-xs text-slate-500 font-medium">
-            {STEPS[currentStep]}
+            {visibleSteps[visibleStepIndex]}
           </span>
         </div>
 
         {/* Stepper Dots & Progress */}
         <div className="flex items-center gap-2">
-          {STEPS.map((step, idx) => (
+          {visibleSteps.map((step, idx) => (
             <div key={step} className="flex-1 flex flex-col items-center gap-1.5">
               <div
                 className={`h-2 w-full rounded-full transition-all duration-300 ${
-                  idx < currentStep
-                    ? 'bg-emerald-500'
-                    : idx === currentStep
+                idx < visibleStepIndex
+                  ? 'bg-emerald-500'
+                  : idx === visibleStepIndex
                     ? 'bg-brand-600 dark:bg-brand-500 ring-2 ring-brand-300 dark:ring-brand-900'
                     : 'bg-slate-200 dark:bg-slate-800'
                 }`}
@@ -401,7 +485,7 @@ export const SetupWizard: React.FC = () => {
                 Welcome to Unifierr
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                We will guide you through setting up a complete, automated media server in a few simple clicks. No API keys, ports, or Docker network configuration required.
+                We will find apps already running, connect what we can, and install what is missing. If something needs your attention, we will explain the next step in plain language.
               </p>
             </div>
           </div>
@@ -496,20 +580,21 @@ export const SetupWizard: React.FC = () => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                Storage & Media Folders
+                Confirm Your Media Storage
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Unifierr sets up the community standard TRaSH folder layout so torrents and library files share one drive and import instantly without double space (<JargonHelp term="Hardlinks" />).
+                Choose where Unifierr should keep its app data, downloads, and new media. It will create folders here and will not move your existing library.
               </p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              <label htmlFor="storage-root" className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
                 Storage Root Directory
               </label>
               <input
+                id="storage-root"
                 type="text"
                 value={rootFolder}
                 onChange={(e) => setRootFolder(e.target.value)}
@@ -517,7 +602,7 @@ export const SetupWizard: React.FC = () => {
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 px-4 py-2.5 text-sm font-mono text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
               <p className="mt-1 text-xs text-slate-500">
-                All data, downloads, and app configurations will live under this root path.
+                Choose a folder with enough free space. Existing files in this folder are left in place.
               </p>
             </div>
 
@@ -572,31 +657,20 @@ export const SetupWizard: React.FC = () => {
               )}
             </div>
 
-            {/* Folder Check Action */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handlePrepareStorage}
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold py-2 px-4 text-xs hover:opacity-90 transition disabled:opacity-50"
-              >
-                {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FolderCheck className="h-3.5 w-3.5" />}
-                Prepare & Verify Folders
-              </button>
-            </div>
-
             {/* Folder Report Display */}
             {folderReport && (
-              <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  Folders Ready & Verified
+              <div className={`rounded-xl border p-4 space-y-3 ${folderReport.writable ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20'}`}>
+                <div className={`flex items-center gap-2 text-sm font-semibold ${folderReport.writable ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                  {folderReport.writable
+                    ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    : <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+                  {folderReport.writable ? 'Storage folder is ready' : 'Storage needs attention'}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 dark:text-slate-300">
                   <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
                     <span className="block text-[10px] text-slate-400 uppercase font-semibold">Writable</span>
-                    <span className="font-semibold text-emerald-600">{folderReport.writable ? 'Yes' : 'No'}</span>
+                    <span className={`font-semibold ${folderReport.writable ? 'text-emerald-600' : 'text-red-600'}`}>{folderReport.writable ? 'Yes' : 'No'}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
                     <span className="block text-[10px] text-slate-400 uppercase font-semibold">Hardlinks Supported</span>
@@ -622,7 +696,7 @@ export const SetupWizard: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setCurrentStep(0)}
@@ -632,14 +706,14 @@ export const SetupWizard: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setCurrentStep(2);
-                loadDetection();
-              }}
-              className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition"
-            >
-              Continue to Apps
-              <ArrowRight className="h-4 w-4" />
+                onClick={() => {
+                  void handlePrepareStorage(true);
+                }}
+                disabled={loading}
+                className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition"
+              >
+                {loading ? 'Checking storage…' : 'Check storage & find apps'}
+                <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -654,13 +728,18 @@ export const SetupWizard: React.FC = () => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                Choose Your Apps
+                Review Your Apps
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                We scanned your system for existing services. Adopt what you already have, or let Unifierr install and configure missing apps for you.
+                We found these services. Recommended setup connects the ones it can and installs missing apps. Detected apps are never overwritten.
               </p>
             </div>
           </div>
+          {recommendedProgress && loading && (
+            <p role="status" aria-live="polite" className="text-xs text-brand-700 dark:text-brand-300">
+              {recommendedProgress}
+            </p>
+          )}
 
           {/* Media Server Choice */}
           <div className="rounded-xl border border-brand-200/60 bg-brand-50/40 dark:border-brand-900/40 dark:bg-brand-950/20 p-4 space-y-3">
@@ -735,7 +814,15 @@ export const SetupWizard: React.FC = () => {
 
           {/* App Cards List */}
           <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowUsenetOptions((visible) => !visible)}
+              className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {showUsenetOptions ? 'Hide optional Usenet apps' : 'Show optional Usenet apps'}
+            </button>
             {ALL_APPS.filter((app) => {
+              if (!showUsenetOptions && (app.kind === 'sabnzbd' || app.kind === 'nzbget')) return false;
               if (app.kind === 'plex' && mediaServerChoice !== 'plex') return false;
               if (app.kind === 'jellyfin' && mediaServerChoice !== 'jellyfin') return false;
               return true;
@@ -919,7 +1006,7 @@ export const SetupWizard: React.FC = () => {
             })}
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setCurrentStep(1)}
@@ -932,10 +1019,19 @@ export const SetupWizard: React.FC = () => {
               onClick={() => {
                 setCurrentStep(3);
               }}
-              className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition"
+              className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
             >
-              Continue to Network & Plex
+              More options: VPN and Plex setup
               <ArrowRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void startRecommendedSetup()}
+              disabled={loading}
+              className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Set up recommended apps
             </button>
           </div>
         </div>
@@ -1092,13 +1188,28 @@ export const SetupWizard: React.FC = () => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                Installing Apps in Docker
+                Setting Up Your Apps
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Pulling verified LinuxServer container images and configuring shared TRaSH storage paths.
+                Connecting to apps already running and installing anything that is missing.
               </p>
             </div>
           </div>
+
+          {adoptionWarnings.length > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4" />
+                Some existing apps need a quick connection check
+              </div>
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                Unifierr left these apps untouched. You can connect them later from Settings → Apps.
+              </p>
+              <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-300">
+                {adoptionWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            </div>
+          )}
 
           {installJob && installJob.steps.length > 0 && (
             <ProgressBar
@@ -1329,18 +1440,27 @@ export const SetupWizard: React.FC = () => {
       {/* STEP 6: All Done Celebration */}
       {currentStep === 6 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-6 shadow-sm">
-          <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
-            <CheckCircle2 className="w-10 h-10" />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner ${setupNeedsAttention ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'}`}>
+            {setupNeedsAttention ? <AlertTriangle className="w-10 h-10" /> : <CheckCircle2 className="w-10 h-10" />}
           </div>
 
           <div className="max-w-md mx-auto space-y-2">
             <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              You're all set!
+              {setupNeedsAttention ? 'Setup is ready, with a few things to check' : "You're all set!"}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Your entire media stack is configured, wired, and ready to go. You can now discover movies and series, request downloads, and watch your media from one simple place.
+              {setupNeedsAttention
+                ? 'Unifierr finished what it could without changing existing app settings. Review these items whenever you are ready.'
+                : 'Your media apps are connected. You can now discover movies and shows and follow requests from one place.'}
             </p>
           </div>
+
+          {setupNeedsAttention && (
+            <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 max-w-lg mx-auto text-left text-xs space-y-2 text-amber-900 dark:text-amber-200">
+              <div className="font-semibold">What needs attention</div>
+              {setupAttentionItems.map((item) => <div key={item}>{item}</div>)}
+            </div>
+          )}
 
           <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 max-w-sm mx-auto text-left text-xs space-y-2 text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">

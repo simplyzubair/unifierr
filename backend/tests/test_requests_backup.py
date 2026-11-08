@@ -30,6 +30,11 @@ class FakeRadarr:
         return [MediaItem(media_type="movie", title="Big Buck Bunny", year=2008, tmdb_id=10378,
                           poster_url="https://image.tmdb.org/p.jpg")]
 
+    async def list_movies(self):
+        return [MediaItem(media_type="movie", title="Big Buck Bunny", year=2008, tmdb_id=10378,
+                          poster_url="https://image.tmdb.org/p.jpg", external_id=7,
+                          in_library=True, has_file=True)]
+
     async def queue(self):
         return [QueueItem(id="abc", name="x", source="radarr", state="downloading", progress=40,
                           media_title="Big Buck Bunny")]
@@ -42,6 +47,9 @@ class FakeRadarr:
         FakeRadarr.added_to.append(root_folder)
         return MediaItem(media_type="movie", title="Big Buck Bunny", tmdb_id=tmdb_id, external_id=7,
                          in_library=True, monitored=True)
+
+    async def delete_movie(self, movie_id, delete_files=False):
+        FakeRadarr.deleted = (movie_id, delete_files)
 
 
 @pytest.fixture
@@ -58,6 +66,40 @@ async def _connect_radarr():
 
     async with sessionmaker()() as db:
         await save_service(db, ServiceKind.radarr, base_url="http://radarr:7878", api_key="k" * 32)
+
+
+async def test_library_delete_is_admin_only_and_explicit_about_files(client, fake_radarr):
+    denied = await client.request(
+        "DELETE",
+        "/api/media/library/movie/7", json={"confirm": True}, headers=CSRF
+    )
+    assert denied.status_code == 401
+
+    await make_admin(client)
+    await _connect_radarr()
+
+    keep_files = await client.request(
+        "DELETE",
+        "/api/media/library/movie/7", json={"confirm": True}, headers=CSRF
+    )
+    assert keep_files.status_code == 200, keep_files.text
+    assert keep_files.json() == {"removed": True, "library_refresh_requested": False}
+    assert FakeRadarr.deleted == (7, False)
+
+    delete_files = await client.request(
+        "DELETE",
+        "/api/media/library/movie/7",
+        json={"confirm": True, "delete_files": True},
+        headers=CSRF,
+    )
+    assert delete_files.status_code == 200, delete_files.text
+    assert FakeRadarr.deleted == (7, True)
+
+    missing_confirmation = await client.request(
+        "DELETE",
+        "/api/media/library/movie/7", json={"confirm": False}, headers=CSRF
+    )
+    assert missing_confirmation.status_code == 422
 
 
 async def test_search_and_user_request_needs_approval(client, fake_radarr):
@@ -86,6 +128,100 @@ async def test_search_and_user_request_needs_approval(client, fake_radarr):
     assert FakeRadarr.added == [10378]
     found = (await client.get("/api/media/search", params={"q": "bunny", "type": "movie"})).json()[0]
     assert found["availability"] == "requested"
+
+
+async def test_media_search_and_library_scope_request_annotations_to_user(client, fake_radarr):
+    await make_admin(client)
+    await _connect_radarr()
+    for username in ("requester", "viewer"):
+        response = await client.post(
+            "/api/users", json={"username": username, "password": f"{username}-password-1"}, headers=CSRF
+        )
+        assert response.status_code == 201, response.text
+
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post(
+        "/api/auth/login", json={"username": "requester", "password": "requester-password-1"}, headers=CSRF
+    )
+    body = {"media_type": "movie", "tmdb_id": 10378, "title": "Big Buck Bunny", "year": 2008}
+    created = await client.post("/api/requests", json=body, headers=CSRF)
+    assert created.status_code == 201, created.text
+
+    own_search = (await client.get("/api/media/search", params={"q": "bunny", "type": "movie"})).json()[0]
+    own_library = (await client.get("/api/media/library", params={"type": "movie"})).json()[0]
+    for item in (own_search, own_library):
+        assert item["request"]["status"] == "pending"
+        assert item["request"]["requested_by"] == "requester"
+
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post(
+        "/api/auth/login", json={"username": "viewer", "password": "viewer-password-1"}, headers=CSRF
+    )
+    other_search = (await client.get("/api/media/search", params={"q": "bunny", "type": "movie"})).json()[0]
+    other_library = (await client.get("/api/media/library", params={"type": "movie"})).json()[0]
+    assert other_search["request"] is None
+    assert other_search["availability"] == "not_added"
+    assert other_library["request"] is None
+
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post("/api/auth/login", json={"username": "admin", "password": "correct-horse-1"}, headers=CSRF)
+    admin_search = (await client.get("/api/media/search", params={"q": "bunny", "type": "movie"})).json()[0]
+    admin_library = (await client.get("/api/media/library", params={"type": "movie"})).json()[0]
+    for item in (admin_search, admin_library):
+        assert item["request"]["status"] == "pending"
+        assert item["request"]["requested_by"] == "requester"
+
+
+async def test_duplicate_request_does_not_disclose_original_requester(client, fake_radarr):
+    await make_admin(client)
+    await _connect_radarr()
+    for username in ("requester", "viewer"):
+        response = await client.post(
+            "/api/users", json={"username": username, "password": f"{username}-password-1"}, headers=CSRF
+        )
+        assert response.status_code == 201, response.text
+
+    body = {"media_type": "movie", "tmdb_id": 10378, "title": "Big Buck Bunny", "year": 2008}
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post(
+        "/api/auth/login", json={"username": "requester", "password": "requester-password-1"}, headers=CSRF
+    )
+    original = await client.post("/api/requests", json=body, headers=CSRF)
+    assert original.status_code == 201, original.text
+    assert original.json()["requested_by"] == "requester"
+
+    same_user_duplicate = await client.post("/api/requests", json=body, headers=CSRF)
+    assert same_user_duplicate.status_code == 201, same_user_duplicate.text
+    assert same_user_duplicate.json()["id"] == original.json()["id"]
+    assert same_user_duplicate.json()["requested_by"] == "requester"
+
+    from app.core.db import sessionmaker
+    from app.models import MediaRequest
+
+    async with sessionmaker()() as db:
+        request = await db.get(MediaRequest, original.json()["id"])
+        request.note = "private moderation note"
+        await db.commit()
+
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post(
+        "/api/auth/login", json={"username": "viewer", "password": "viewer-password-1"}, headers=CSRF
+    )
+    duplicate = await client.post("/api/requests", json=body, headers=CSRF)
+    assert duplicate.status_code == 409, duplicate.text
+    conflict = duplicate.json()
+    assert conflict["detail"] == "This title already has an active request. Check Requests or ask an admin for help."
+    assert set(conflict) == {"detail"}
+    for private_field in ("id", "status", "note", "requested_by", "created_at"):
+        assert private_field not in conflict
+    assert "private moderation note" not in duplicate.text
+
+    await client.post("/api/auth/logout", headers=CSRF)
+    await client.post("/api/auth/login", json={"username": "admin", "password": "correct-horse-1"}, headers=CSRF)
+    admin_duplicate = await client.post("/api/requests", json=body, headers=CSRF)
+    assert admin_duplicate.status_code == 201, admin_duplicate.text
+    assert admin_duplicate.json()["id"] == original.json()["id"]
+    assert admin_duplicate.json()["requested_by"] == "requester"
 
 
 async def test_admin_request_is_auto_approved_and_deduplicated(client, fake_radarr):

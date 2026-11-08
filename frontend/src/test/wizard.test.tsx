@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { SetupWizard } from '@/pages/setup/SetupWizard';
-import { setupApi, systemApi } from '@/api';
+import { jobsApi, setupApi, systemApi } from '@/api';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
@@ -45,6 +45,16 @@ describe('SetupWizard navigation', () => {
       notes: ['Recommended setup verified.'],
     });
     vi.mocked(setupApi.detectApps).mockResolvedValue([]);
+    vi.mocked(setupApi.prepareFolders).mockResolvedValue({
+      root: '/srv/unifierr',
+      created: [],
+      existing: [],
+      writable: true,
+      same_filesystem: true,
+      free_bytes: 10_000,
+      total_bytes: 20_000,
+      problems: [],
+    });
     vi.mocked(systemApi.getSettings).mockResolvedValue({
       root: '/srv/unifierr',
       puid: 1000,
@@ -80,9 +90,9 @@ describe('SetupWizard navigation', () => {
     const continueBtn = screen.getByRole('button', { name: /continue to storage/i });
     await userEvent.click(continueBtn);
 
-    // Should now be on step 2: Storage Layout
+    // Should now be on step 2: Storage
     await waitFor(() => {
-      expect(screen.getByText('Storage & Media Folders')).toBeInTheDocument();
+      expect(screen.getByText('Confirm Your Media Storage')).toBeInTheDocument();
     });
     expect(screen.getByDisplayValue('/srv/unifierr')).toBeInTheDocument();
 
@@ -104,12 +114,73 @@ describe('SetupWizard navigation', () => {
 
     await screen.findByText('Welcome to Unifierr');
     await userEvent.click(screen.getByRole('button', { name: /continue to storage/i }));
-    await userEvent.click(screen.getByRole('button', { name: /continue to apps/i }));
-    await screen.findByText('Choose Your Apps');
+    await userEvent.click(screen.getByRole('button', { name: /check storage & find apps/i }));
+    await screen.findByText('Review Your Apps');
     await userEvent.click(screen.getByRole('radio', { name: /plex media server/i }));
-    await userEvent.click(screen.getByRole('button', { name: /continue to network & plex/i }));
+    await userEvent.click(screen.getByRole('button', { name: /more options: vpn and plex setup/i }));
 
     expect(await screen.findByLabelText('Plex claim token')).toBeInTheDocument();
     expect(screen.getByText(/expire after about 4 minutes/i)).toBeInTheDocument();
+  });
+
+  it('checks storage before recommending apps', async () => {
+    vi.mocked(setupApi.prepareFolders).mockResolvedValue({
+      root: '/srv/unifierr',
+      created: [],
+      existing: [],
+      writable: false,
+      same_filesystem: true,
+      free_bytes: 0,
+      total_bytes: 20_000,
+      problems: [],
+    });
+    render(<BrowserRouter><SetupWizard /></BrowserRouter>);
+
+    await screen.findByText('Welcome to Unifierr');
+    await userEvent.click(screen.getByRole('button', { name: /continue to storage/i }));
+    await userEvent.click(screen.getByRole('button', { name: /check storage & find apps/i }));
+
+    expect(await screen.findByText('Storage needs attention')).toBeInTheDocument();
+    expect(setupApi.detectApps).not.toHaveBeenCalled();
+  });
+
+  it('connects detected apps and installs only missing recommended apps', async () => {
+    vi.mocked(setupApi.detectApps).mockResolvedValue([{
+      kind: 'radarr',
+      source: 'docker',
+      container_name: 'radarr',
+      url_candidates: ['http://radarr:7878'],
+      reachable_url: 'http://radarr:7878',
+      api_key_found: true,
+      managed: false,
+    }]);
+    vi.mocked(setupApi.adopt).mockResolvedValue({} as never);
+    vi.mocked(setupApi.install).mockResolvedValue({ job_id: 'install-job' });
+    vi.mocked(setupApi.wire).mockResolvedValue({ job_id: 'wire-job' });
+    vi.mocked(jobsApi.getJob).mockResolvedValue({
+      id: 'install-job',
+      kind: 'install',
+      status: 'done',
+      steps: [],
+      log: [],
+      result: {},
+      started_at: new Date().toISOString(),
+    });
+
+    render(<BrowserRouter><SetupWizard /></BrowserRouter>);
+    await screen.findByText('Welcome to Unifierr');
+    await userEvent.click(screen.getByRole('button', { name: /continue to storage/i }));
+    await userEvent.click(screen.getByRole('button', { name: /check storage & find apps/i }));
+    await screen.findByText('Review Your Apps');
+    await userEvent.click(screen.getByRole('button', { name: /set up recommended apps/i }));
+
+    await waitFor(() => expect(setupApi.adopt).toHaveBeenCalledWith({
+      kind: 'radarr',
+      base_url: 'http://radarr:7878',
+    }));
+    await waitFor(() => expect(setupApi.install).toHaveBeenCalledWith([
+      'sonarr', 'prowlarr', 'qbittorrent', 'bazarr', 'jellyfin',
+    ]));
+    await waitFor(() => expect(setupApi.wire).toHaveBeenCalledOnce());
   });
 });

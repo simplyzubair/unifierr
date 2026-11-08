@@ -176,7 +176,8 @@ def test_install_port_clash_removes_half_created_container() -> None:
 
     dm = DockerManager(client=mock_client)
     with pytest.raises(UnifierrError) as err:
-        dm.install(CATALOG[ServiceKind.qbittorrent], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC")
+        dm.install(CATALOG[ServiceKind.qbittorrent], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC",
+                   host_port=8080)
     assert "8080" in err.value.message and err.value.fix
     created.remove.assert_called_once_with(force=True)
 
@@ -203,11 +204,52 @@ def test_install_gluetun_capabilities_and_published_ports() -> None:
     )
 
     options = mock_client.containers.create.call_args.kwargs
-    assert options["ports"]["8080/tcp"] == 8080
     assert options["ports"]["6881/udp"] == 6881
+    assert options["ports"]["6881/tcp"] == 6881
     assert options["cap_add"] == ["NET_ADMIN"]
     assert options["devices"] == ["/dev/net/tun:/dev/net/tun"]
     assert options["volumes"] == {}
+
+
+@pytest.mark.parametrize("kind", [ServiceKind.radarr, ServiceKind.prowlarr, ServiceKind.qbittorrent,
+                                   ServiceKind.sonarr, ServiceKind.bazarr])
+def test_managed_app_web_uis_are_private_by_default(kind: ServiceKind) -> None:
+    mock_client = MagicMock()
+    mock_client.containers.get.side_effect = Exception("Not found")
+    mock_client.api.pull.return_value = []
+    mock_client.containers.create.return_value = MagicMock()
+
+    DockerManager(client=mock_client).install(
+        CATALOG[kind], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC",
+    )
+
+    assert f"{CATALOG[kind].internal_port}/tcp" not in mock_client.containers.create.call_args.kwargs["ports"]
+
+
+def test_explicit_management_ui_host_port_is_respected() -> None:
+    mock_client = MagicMock()
+    mock_client.containers.get.side_effect = Exception("Not found")
+    mock_client.api.pull.return_value = []
+    mock_client.containers.create.return_value = MagicMock()
+
+    DockerManager(client=mock_client).install(
+        CATALOG[ServiceKind.radarr], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC", host_port=17878,
+    )
+
+    assert mock_client.containers.create.call_args.kwargs["ports"] == {"7878/tcp": 17878}
+
+
+def test_media_server_streaming_port_is_published_by_default() -> None:
+    mock_client = MagicMock()
+    mock_client.containers.get.side_effect = Exception("Not found")
+    mock_client.api.pull.return_value = []
+    mock_client.containers.create.return_value = MagicMock()
+
+    DockerManager(client=mock_client).install(
+        CATALOG[ServiceKind.jellyfin], root="/srv/unifierr", puid=1000, pgid=1000, tz="UTC",
+    )
+
+    assert mock_client.containers.create.call_args.kwargs["ports"] == {"8096/tcp": 8096}
 
 
 def test_install_vpn_routed_client_uses_shared_network_and_redacts_env_secret() -> None:

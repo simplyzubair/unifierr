@@ -4,10 +4,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.base import MediaItem, QueueItem, ServiceKind
@@ -30,6 +31,8 @@ class RequestOut(BaseModel):
     year: int | None
     poster_url: str | None
     status: str
+    stage: str = "unknown"
+    stage_message: str = "Progress has not been checked yet."
     availability: Availability | None = None
     requested_by: str | None = None
     created_at: str
@@ -71,8 +74,11 @@ async def _queue_titles(db: AsyncSession) -> set[str]:
     return titles
 
 
-async def _requests_by_key(db: AsyncSession) -> dict[tuple, MediaRequest]:
-    rows = (await db.execute(select(MediaRequest))).scalars()
+async def _requests_by_key(db: AsyncSession, user: User) -> dict[tuple, MediaRequest]:
+    stmt = select(MediaRequest)
+    if user.role != "admin":
+        stmt = stmt.where(MediaRequest.user_id == user.id)
+    rows = (await db.execute(stmt)).scalars()
     return {_key(r.media_type, r.tmdb_id, r.tvdb_id): r for r in rows}
 
 
@@ -80,17 +86,31 @@ async def _usernames(db: AsyncSession) -> dict[int, str]:
     return {u.id: u.username for u in (await db.execute(select(User))).scalars()}
 
 
-def request_out(r: MediaRequest, names: dict[int, str], availability: Availability | None = None) -> RequestOut:
+def request_out(
+    r: MediaRequest,
+    names: dict[int, str],
+    availability: Availability | None = None,
+    stage: tuple[str, str] | None = None,
+) -> RequestOut:
+    if stage is None:
+        defaults = {
+            "pending": ("pending_review", "Waiting for an admin to approve this request."),
+            "approved": ("searching", "Sent to the media app; waiting for a matching release."),
+            "denied": ("denied", "This request was declined."),
+            "failed": ("needs_attention", r.note or "Unifierr could not send this to the media app."),
+        }
+        stage = defaults.get(r.status, ("unknown", "Progress has not been checked yet."))
     return RequestOut(
         id=r.id, media_type=r.media_type, tmdb_id=r.tmdb_id, tvdb_id=r.tvdb_id, title=r.title, year=r.year,
         poster_url=r.poster_url, status=r.status, availability=availability,
+        stage=stage[0], stage_message=stage[1],
         requested_by=names.get(r.user_id) if r.user_id else None,
         created_at=r.created_at.isoformat(), note=r.note,
     )
 
 
-async def _annotate(db: AsyncSession, items: list[MediaItem]) -> list[MediaResult]:
-    reqs = await _requests_by_key(db)
+async def _annotate(db: AsyncSession, items: list[MediaItem], user: User) -> list[MediaResult]:
+    reqs = await _requests_by_key(db, user)
     names = await _usernames(db)
     downloading = await _queue_titles(db)
     out = []
@@ -102,7 +122,7 @@ async def _annotate(db: AsyncSession, items: list[MediaItem]) -> list[MediaResul
     return out
 
 
-async def search(db: AsyncSession, q: str, media_type: str) -> list[MediaResult]:
+async def search(db: AsyncSession, q: str, media_type: str, user: User) -> list[MediaResult]:
     q = q.strip()
     if not q:
         return []
@@ -122,14 +142,56 @@ async def search(db: AsyncSession, q: str, media_type: str) -> list[MediaResult]
             items.extend(r[:40])
     if errors and not items:
         raise errors[0]
-    return await _annotate(db, items)
+    return await _annotate(db, items, user)
 
 
-async def library(db: AsyncSession, media_type: str) -> list[MediaResult]:
+async def library(db: AsyncSession, media_type: str, user: User) -> list[MediaResult]:
     kind = ARR_FOR[media_type]
     async with adapter_for(db, kind) as arr:
         items = await (arr.list_movies() if media_type == "movie" else arr.list_series())
-    return await _annotate(db, items)
+        return await _annotate(db, items, user)
+
+
+async def delete_library_item(
+    db: AsyncSession,
+    media_type: Literal["movie", "series"],
+    external_id: int,
+    *,
+    delete_files: bool,
+) -> bool:
+    """Remove one managed title and ask any connected media server to rescan."""
+    kind = ARR_FOR[media_type]
+    matching_item: MediaItem | None = None
+    async with adapter_for(db, kind) as arr:
+        items = await (arr.list_movies() if media_type == "movie" else arr.list_series())
+        matching_item = next((item for item in items if item.external_id == external_id), None)
+        if media_type == "movie":
+            await arr.delete_movie(external_id, delete_files=delete_files)
+        else:
+            await arr.delete_series(external_id, delete_files=delete_files)
+
+    # Clear a stale request so the title can be requested again after removal.
+    if matching_item is not None:
+        identity_column = MediaRequest.tmdb_id if media_type == "movie" else MediaRequest.tvdb_id
+        external_identity = matching_item.tmdb_id if media_type == "movie" else matching_item.tvdb_id
+        if external_identity is not None:
+            await db.execute(delete(MediaRequest).where(
+                MediaRequest.media_type == media_type,
+                identity_column == external_identity,
+            ))
+            await db.commit()
+
+    refreshed = False
+    for server_kind in (ServiceKind.jellyfin, ServiceKind.plex):
+        try:
+            async with adapter_for(db, server_kind, required=False) as server:
+                if server is None:
+                    continue
+                await server.refresh_library()
+                refreshed = True
+        except Exception:  # noqa: BLE001 - removal succeeded; report refresh as best-effort
+            log.warning("Could not refresh %s after library removal", server_kind, exc_info=True)
+    return refreshed
 
 
 async def recent(db: AsyncSession) -> list[MediaItem]:
@@ -199,7 +261,15 @@ async def downloads_snapshot(db: AsyncSession) -> dict:
                         items.setdefault(qi.id, qi)  # waiting import, or a client Unifierr does not manage
         except UnifierrError:
             continue  # queue enrichment is optional; the client data is still shown
-    return {"items": list(items.values()), "dl_speed": dl, "up_speed": up}
+    item_values = list(items.values())
+    item_dl_speed = sum(item.download_speed or 0 for item in item_values)
+    item_up_speed = sum(item.upload_speed or 0 for item in item_values)
+    return {
+        "items": item_values,
+        "dl_speed": max(dl, item_dl_speed),
+        "up_speed": max(up, item_up_speed),
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
 
 
 def _route_item(item_id: str) -> tuple[ServiceKind, str]:

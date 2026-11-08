@@ -52,9 +52,20 @@ class ProwlarrAdapter(ArrBase):
         out: list[IndexerSchema] = []
         for d in data or []:
             required = [
-                {"name": f.get("name"), "label": f.get("label"), "type": f.get("type"), "value": f.get("value")}
-                for f in d.get("fields", [])
-                if not f.get("advanced") and f.get("type") not in ("info", "hidden", "checkbox")
+                    {
+                        "name": f.get("name"),
+                        "label": f.get("label"),
+                        "type": f.get("type"),
+                        "value": f.get("value"),
+                        "helpText": f.get("helpText"),
+                        "selectOptions": [
+                            {"value": option.get("value"), "name": option.get("name")}
+                            for option in f.get("selectOptions", [])
+                            if isinstance(option, dict)
+                        ],
+                    }
+                    for f in d.get("fields", [])
+                    if not f.get("advanced") and f.get("type") not in ("info", "hidden")
                 and f.get("name") not in _SKIP_FIELDS
                 and not str(f.get("name", "")).startswith(("baseSettings.", "torrentBaseSettings."))
             ]
@@ -84,6 +95,20 @@ class ProwlarrAdapter(ArrBase):
         body = {k: v for k, v in schema.items() if k != "id"}
         body["enable"] = True
         body.setdefault("tags", [])
+        # Prowlarr supplies valid base URLs for definitions with dynamic URL choices.
+        # Use its first choice when the schema has no default so the user need not
+        # discover or type an internal provider setting by hand.
+        indexer_urls = schema.get("indexerUrls")
+        if isinstance(indexer_urls, list) and indexer_urls:
+            for field in body.get("fields", []):
+                if (
+                    field.get("name") == "baseUrl"
+                    and field.get("selectOptionsProviderAction")
+                    and not field.get("value")
+                    and isinstance(indexer_urls[0], str)
+                ):
+                    field["value"] = indexer_urls[0]
+                    break
         if not body.get("appProfileId"):
             profiles = await self._json("GET", "/appprofile")
             body["appProfileId"] = int(profiles[0]["id"]) if profiles else 1

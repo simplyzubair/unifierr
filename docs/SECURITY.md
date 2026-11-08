@@ -8,7 +8,7 @@
 **Sign-in**
 - Passwords are hashed with Argon2. Sessions are random tokens stored hashed on the server, in an
   `HttpOnly`, `SameSite=Strict` cookie. Changing your password signs out your other devices.
-- Failed sign-ins are rate-limited (10 per 5 minutes per IP and username).
+- Failed sign-ins are limited to 10 per 5 minutes per client IP, regardless of username. Behind a reverse proxy or tunnel, this may be the proxy's IP, so it can apply to everyone using that proxy.
 - State-changing requests need the `X-Unifierr-CSRF: 1` header (forged cross-site requests can't send it).
 - Behind HTTPS, set `UNIFIERR_SECURE_COOKIES=true`.
 
@@ -30,6 +30,12 @@
   backup are discarded.
 
 **Remote access**
-Use Tailscale or Cloudflare Tunnel (with Cloudflare Access). Do not port-forward 8484.
+Compose binds the web port to `127.0.0.1` by default. For remote access, use Tailscale Serve or an HTTPS
+reverse proxy with access controls, forwarding to `http://127.0.0.1:8484`. Do not port-forward 8484.
+
+**Service addresses**
+Known local service names, private LAN addresses, and Tailscale addresses are supported. Other remote
+service hosts must be added exactly to `UNIFIERR_ALLOWED_SERVICE_HOSTS` and use HTTPS. Unapproved public
+hosts and metadata service addresses are rejected before Unifierr sends saved service credentials.
 
 Report vulnerabilities privately through GitHub Security Advisories.

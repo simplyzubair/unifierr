@@ -15,6 +15,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.core.errors import ServiceUnavailable
+from app.core.safe_http import SafeAsyncClient
 
 
 class ServiceKind(StrEnum):
@@ -155,7 +156,7 @@ class BaseAdapter(ABC):
     def __init__(self, conn: Connection, client: httpx.AsyncClient | None = None):
         self.conn = conn
         self._own_client = client is None
-        self.client = client or httpx.AsyncClient(timeout=conn.timeout, follow_redirects=False)
+        self.client = client or SafeAsyncClient(timeout=conn.timeout, follow_redirects=False)
 
     async def aclose(self) -> None:
         if self._own_client:

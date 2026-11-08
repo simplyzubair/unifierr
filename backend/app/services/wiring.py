@@ -168,8 +168,8 @@ async def _wire_prowlarr(db: AsyncSession, job: Job) -> None:
             except Exception as exc:  # noqa: BLE001
                 job.fail(s, exc)
 
-    # Verify the Prowlarr -> *arr sync actually carries Usenet indexers over.
-    s = job.step("Copy Usenet indexers to Radarr and Sonarr")
+    # Verify the Prowlarr -> *arr sync actually pushes all enabled indexers over.
+    s = job.step("Sync indexers to Radarr and Sonarr")
     if prowlarr is None:
         job.skip(s, "Prowlarr is not connected.")
         return
@@ -178,13 +178,16 @@ async def _wire_prowlarr(db: AsyncSession, job: Job) -> None:
         return
     try:
         async with adapter_for(db, ServiceKind.prowlarr) as p:
-            usenet = [i for i in await p.indexers() if str(i.protocol).lower() == "usenet" and i.enabled]
-            if not usenet:
-                job.skip(s, "No Usenet indexers are set up yet. Add one under Indexers and it is copied over.")
+            enabled = [i for i in await p.indexers() if i.enabled]
+            if not enabled:
+                job.skip(
+                    s,
+                    "No enabled indexers are set up yet. Add one under Indexers and it will be synced automatically.",
+                )
                 return
             for app_id in app_ids.values():
                 await p.sync_application(app_id)
-        job.ok(s, f"{len(usenet)} Usenet indexer(s) pushed to Radarr and Sonarr.")
+        job.ok(s, f"{len(enabled)} enabled indexer(s) synced to {len(app_ids)} connected media manager(s).")
     except Exception as exc:  # noqa: BLE001
         job.fail(s, exc)
 
@@ -241,13 +244,21 @@ async def _wire_jellyfin(db: AsyncSession, job: Job) -> bool:
                 jf.conn.api_key = token
                 api_key = await jf.create_api_key("Unifierr")
                 svc.api_key_enc = encrypt(api_key)
+                if not svc.managed:
+                    # An adopted server only needs Unifierr's dedicated API key after setup.
+                    # Do not retain the existing Jellyfin administrator's password.
+                    svc.username = None
+                    svc.password_enc = None
                 await db.commit()
         job.ok(s, "Jellyfin is ready.")
     except Exception as exc:  # noqa: BLE001
         job.fail(s, exc)
         return True
 
-    s = job.step("Create Jellyfin libraries")
+    s = job.step("Set up Jellyfin libraries")
+    if not svc.managed:
+        job.skip(s, "Existing Jellyfin is linked; its libraries and folder paths were left unchanged.")
+        return True
     try:
         async with adapter_for(db, ServiceKind.jellyfin) as jf:
             await jf.ensure_library("Movies", "movies", MOVIES_PATH)

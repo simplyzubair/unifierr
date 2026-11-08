@@ -27,19 +27,19 @@ Unifierr does not replace these apps. It installs and drives the proven ones thr
 Dashboards like Homarr only link to apps, and Seerr only handles requests. Unifierr also does the setup,
 the wiring and the daily operations. See [docs/RESEARCH.md](docs/RESEARCH.md).
 
-## Install (5 minutes)
+## Install
 
 You need a Linux machine or NAS with **Docker** (Synology, Unraid, TrueNAS SCALE or plain Linux).
 
+The server image is not yet published to GHCR. For this preview, build from source:
+
 ```bash
-mkdir -p ~/unifierr && cd ~/unifierr
-curl -fsSLO https://raw.githubusercontent.com/simplyzubair/unifierr/main/deploy/docker-compose.yml
-curl -fsSL  https://raw.githubusercontent.com/simplyzubair/unifierr/main/deploy/.env.example -o .env
-nano .env        # set UNIFIERR_ROOT to the folder for your media, e.g. /volume1/media on Synology
-docker compose up -d
+git clone https://github.com/simplyzubair/unifierr.git
+cd unifierr
+docker compose --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
 ```
 
-Open `http://<your-server-ip>:8484` and follow the wizard:
+The installer binds the web port to the server itself by default. Set up an HTTPS reverse proxy (for example, Tailscale Serve) to `http://127.0.0.1:8484`, then open its HTTPS address and follow the wizard. See [docs/INSTALL.md](docs/INSTALL.md) for access options.
 
 1. **Create your admin account.**
 2. **Check your system.** Unifierr detects your NAS type and Docker.
@@ -50,6 +50,9 @@ Open `http://<your-server-ip>:8484` and follow the wizard:
 
 Platform notes (Synology, Unraid, TrueNAS), building from source, upgrades and backups:
 **[docs/INSTALL.md](docs/INSTALL.md)**.
+
+Windows, macOS, and Android client preview source: **[client/](client/)**. Client builds require access to
+the NAS over Tailscale; requests and downloads continue to run on the server.
 
 ## What works today
 

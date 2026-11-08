@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 # Read-only token: CI never needs to write to the repository.
 permissions:
@@ -53,15 +54,29 @@ jobs:
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Test installer storage-path handling
+        run: bash deploy/tests/test_install.sh
+      - name: Validate deployment Compose configuration
+        run: docker compose -f deploy/docker-compose.yml config --quiet
+      - name: Check quoted storage paths through Compose
+        run: bash deploy/tests/test_compose_env.sh
+      - name: Validate source-build Compose configuration
+        run: docker compose --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml config --quiet
       - name: Build image (no push)
         run: docker build -f deploy/Dockerfile -t unifierr:ci .
-      - name: Smoke test the container
+      - name: Smoke test the production container
         run: |
-          docker run -d --name unifierr-ci -p 8484:8484 -e UNIFIERR_DOCKER_HOST= unifierr:ci
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8484/api/health; then break; fi
+          set -euo pipefail
+          container=unifierr-ci
+          cleanup() {
+            docker rm --force "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name "$container" --publish 127.0.0.1::8484 --env UNIFIERR_DOCKER_HOST= unifierr:ci
+          host_port=$(docker port "$container" 8484/tcp | sed 's/.*://')
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent "http://127.0.0.1:$host_port/api/health" >/dev/null; then break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:8484/api/health
-          curl -fsS http://127.0.0.1:8484/ | grep -qi "<div id=\"root\""
-          docker logs unifierr-ci
+          curl --fail --silent --show-error "http://127.0.0.1:$host_port/api/health" >/dev/null
+          curl --fail --silent --show-error "http://127.0.0.1:$host_port/" | grep -qi '<div id="root"'

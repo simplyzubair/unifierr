@@ -5,7 +5,7 @@ import { AvailabilityBadge } from '@/components/common/Badge';
 import { PosterSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
-import type { MediaResult, MediaItem } from '@/types/api';
+import type { MediaResult, MediaItem, RequestPreflight } from '@/types/api';
 import {
   Search,
   Film,
@@ -32,6 +32,43 @@ export const Discover: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<MediaResult | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [requestSuccess, setRequestSuccess] = useState(false);
+  const [preflight, setPreflight] = useState<RequestPreflight | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightFailed, setPreflightFailed] = useState(false);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setPreflight(null);
+      setPreflightLoading(false);
+      setPreflightFailed(false);
+      return;
+    }
+
+    let active = true;
+    const payload = {
+      media_type: selectedItem.media_type,
+      tmdb_id: selectedItem.tmdb_id,
+      tvdb_id: selectedItem.tvdb_id,
+      title: selectedItem.title,
+      year: selectedItem.year,
+      poster_url: selectedItem.poster_url,
+    };
+    setPreflight(null);
+    setPreflightFailed(false);
+    setPreflightLoading(true);
+    requestsApi.preflight(payload)
+      .then((result) => {
+        if (active) setPreflight(result);
+      })
+      .catch(() => {
+        if (active) setPreflightFailed(true);
+      })
+      .finally(() => {
+        if (active) setPreflightLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [selectedItem]);
 
   // Debounce query
   useEffect(() => {
@@ -264,8 +301,31 @@ export const Discover: React.FC = () => {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-950 p-3 text-xs text-slate-600 dark:text-slate-400">
-              Your request will be processed immediately. Once an indexer finds a suitable release, download will begin automatically.
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+              <div className="font-semibold text-slate-900 dark:text-white">
+                {preflightLoading ? 'Checking your request path…' :
+                  preflight?.verdict === 'ready' ? 'Core apps are ready' :
+                  preflight?.verdict === 'warning' ? 'A few things need attention' :
+                  preflight?.verdict === 'blocked' ? 'This request may not complete yet' :
+                  preflightFailed ? 'Could not check readiness' : 'Checking request readiness'}
+              </div>
+              {preflightLoading && <p className="text-slate-500">Checking your media app, indexers, download client, and storage.</p>}
+              {preflightFailed && <p className="text-slate-500">The check did not finish. You can still submit the request, and Unifierr will show any processing error.</p>}
+              {preflight && <div className="space-y-1.5">
+                {preflight.checks.map((check) => (
+                  <div key={check.name} className="flex items-start gap-2">
+                    <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                      check.status === 'ready' ? 'bg-emerald-500' :
+                      check.status === 'warning' ? 'bg-amber-500' : 'bg-rose-500'
+                    }`} />
+                    <div>
+                      <span className="font-medium">{check.name}:</span> {check.message}
+                      {check.fix && <div className="text-slate-500">Suggested fix: {check.fix}</div>}
+                    </div>
+                  </div>
+                ))}
+                <p className="pt-1 text-slate-500">This quick check confirms connections and enabled indexers. It cannot prove an indexer is live or check every app’s container permissions.</p>
+              </div>}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
@@ -280,7 +340,7 @@ export const Discover: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleRequest(selectedItem)}
-                disabled={requesting}
+                disabled={requesting || preflightLoading}
                 className="flex items-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold py-2 px-5 shadow-sm transition disabled:opacity-50"
               >
                 {requestSuccess ? (
@@ -291,7 +351,8 @@ export const Discover: React.FC = () => {
                   'Requesting...'
                 ) : (
                   <>
-                    <Plus className="h-4 w-4" /> Confirm Request
+                    <Plus className="h-4 w-4" />
+                    {preflight?.verdict === 'blocked' || preflightFailed ? 'Submit Anyway' : 'Confirm Request'}
                   </>
                 )}
               </button>

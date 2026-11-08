@@ -1,9 +1,9 @@
 # Build Unifierr from source instead of downloading the published image.
 # Usage (from the repository root):
-#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
+#   docker compose --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
 services:
   unifierr:
     image: unifierr:local
     build:
-      context: ..
+      context: .
       dockerfile: deploy/Dockerfile

@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from app.adapters.base import ServiceKind
 from app.core.crypto import encrypt
 from app.core.db import sessionmaker
@@ -19,6 +21,16 @@ class RecordingDocker:
 
     def install(self, spec, **kwargs):
         self.install_args.append((spec, kwargs))
+
+
+async def test_wait_timeout_log_omits_service_address() -> None:
+    job = Mock()
+    secret_host = "https://private-media.example:9443"
+
+    assert await installer.wait_until_up(secret_host, max_wait=0, job=job) is False
+
+    job.say.assert_called_once_with("Gave up waiting for the service to respond.")
+    assert secret_host not in job.say.call_args.args[0]
 
 
 async def _ready(*args, **kwargs):

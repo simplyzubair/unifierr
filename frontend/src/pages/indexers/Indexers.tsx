@@ -167,10 +167,10 @@ export const Indexers: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             <Radio className="h-6 w-6 text-brand-600 dark:text-brand-400" />
-            Indexers & Trackers
+            Search Sources
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            An indexer is a search engine for torrents and media releases that feeds downloads to Radarr and Sonarr automatically.
+            Connect a search provider once; Prowlarr shares it with Radarr and Sonarr. Choose sources and content you have permission to access.
           </p>
         </div>
 
@@ -273,7 +273,7 @@ export const Indexers: React.FC = () => {
         <EmptyState
           icon={Radio}
           title="No indexers configured"
-          description="Indexers allow your apps to find downloads. Click 'Add Indexer' to enable public or private torrent search."
+          description="No search providers are connected yet. Add one from Prowlarr’s catalogue, then use it only for content you’re allowed to access. Provider availability and content rights vary."
           actionLabel="Add an Indexer"
           onAction={openAddModal}
         />
@@ -296,7 +296,7 @@ export const Indexers: React.FC = () => {
                   type="search"
                   value={schemaSearch}
                   onChange={(e) => setSchemaSearch(e.target.value)}
-                  placeholder="Search indexers (e.g. 1337x, RARBG, TorrentGalaxy)..."
+                  placeholder="Search Prowlarr’s catalogue (for example, Internet Archive)..."
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 pl-9 pr-3 py-2 text-xs"
                 />
               </div>
@@ -374,7 +374,7 @@ export const Indexers: React.FC = () => {
           /* Configure Selected Schema Form */
           <form onSubmit={handleCreateIndexer} className="space-y-4">
             <div className="p-3 rounded-xl bg-brand-50 dark:bg-brand-950/40 text-xs text-brand-900 dark:text-brand-200">
-              Configuring <span className="font-bold">{selectedSchema.name}</span>. Most public indexers require no special settings.
+              Configuring <span className="font-bold">{selectedSchema.name}</span>. Some providers need a URL or account details. Only connect providers you’re allowed to use.
             </div>
 
             {selectedSchema.required_fields && selectedSchema.required_fields.length > 0 ? (
@@ -384,15 +384,41 @@ export const Indexers: React.FC = () => {
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       {f.label || f.name}
                     </label>
-                    <input
-                      type={f.type === 'password' ? 'password' : 'text'}
-                      value={(formFields[f.name] as string) || ''}
-                      onChange={(e) =>
-                        setFormFields((prev) => ({ ...prev, [f.name]: e.target.value }))
-                      }
-                      placeholder={f.helpText || ''}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs"
-                    />
+                    {f.type === 'checkbox' ? (
+                      <input
+                        type="checkbox"
+                        checked={Boolean(formFields[f.name])}
+                        onChange={(e) =>
+                          setFormFields((prev) => ({ ...prev, [f.name]: e.target.checked }))
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    ) : f.type === 'select' && f.selectOptions && f.selectOptions.length > 0 ? (
+                      <select
+                        value={String(formFields[f.name] ?? '')}
+                        onChange={(e) => {
+                          const option = f.selectOptions?.find((item) => String(item.value) === e.target.value);
+                          if (option) setFormFields((prev) => ({ ...prev, [f.name]: option.value }));
+                        }}
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs"
+                      >
+                        {f.selectOptions.map((option) => (
+                          <option key={String(option.value)} value={String(option.value)}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={f.type === 'password' ? 'password' : 'text'}
+                        value={String(formFields[f.name] ?? '')}
+                        onChange={(e) =>
+                          setFormFields((prev) => ({ ...prev, [f.name]: e.target.value }))
+                        }
+                        placeholder={f.helpText || ''}
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs"
+                      />
+                    )}
                   </div>
                 ))}
               </div>

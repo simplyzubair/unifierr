@@ -45,7 +45,9 @@ export const Requests: React.FC = () => {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
-    loadRequests();
+    void loadRequests();
+    const refreshTimer = window.setInterval(() => void loadRequests(), 60_000);
+    return () => window.clearInterval(refreshTimer);
   }, [selectedStatus]);
 
   const loadRequests = async () => {
@@ -133,7 +135,7 @@ export const Requests: React.FC = () => {
             Media Requests
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {isAdmin ? 'Review, approve, or deny requested movies and TV series.' : 'Track the status of your requested media.'}
+            {isAdmin ? 'Review requests and follow each one through to your library.' : 'Follow your requests through to your library. Progress refreshes every minute.'}
           </p>
         </div>
 
@@ -214,6 +216,9 @@ export const Requests: React.FC = () => {
                       <span className="italic">{req.note}</span>
                     </div>
                   )}
+                  <div className="text-xs text-slate-600 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Progress:</span> {req.stage_message}
+                  </div>
                 </div>
               </div>
 

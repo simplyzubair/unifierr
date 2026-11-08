@@ -371,13 +371,18 @@ class DockerManager:
         env.update(env_overrides or {})
 
         # 6. Ports
-        port_to_bind = host_port or spec.default_host_port
         if spec.kind == ServiceKind.gluetun:
             ports: dict[str, Any] = dict(spec.published_ports)
         elif network_mode:
             ports = {}
-        else:
+        elif host_port is not None or spec.publish_by_default:
+            port_to_bind = host_port if host_port is not None else spec.default_host_port
             ports = {f"{spec.internal_port}/tcp": port_to_bind}
+        else:
+            # Keep management UIs private on the shared Docker network by default.
+            # Jellyfin/Plex publish their streaming endpoint; advanced users can explicitly
+            # request a management UI host port through `host_port`.
+            ports = {}
         if spec.kind == ServiceKind.qbittorrent and not network_mode:
             ports["6881/tcp"] = 6881
             ports["6881/udp"] = 6881

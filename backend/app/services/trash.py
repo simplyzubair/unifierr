@@ -14,6 +14,7 @@ import httpx
 
 from app.adapters.base import ServiceKind
 from app.core.errors import ServiceUnavailable
+from app.core.safe_http import SafeAsyncClient
 from app.services.common import adapter_for, get_service, get_setting, log_event
 
 log = logging.getLogger("unifierr.trash")
@@ -77,7 +78,7 @@ async def apply_trash_profiles(db, job=None, *, client: httpx.AsyncClient | None
     lets callers (e.g. wiring) record plain-English steps.
     """
     own_client = client is None
-    client = client or httpx.AsyncClient(timeout=_TIMEOUT)
+    client = client or SafeAsyncClient(timeout=_TIMEOUT, follow_redirects=False)
     report: dict[str, Any] = {"radarr": [], "sonarr": [], "errors": []}
     try:
         for kind in (ServiceKind.radarr, ServiceKind.sonarr):

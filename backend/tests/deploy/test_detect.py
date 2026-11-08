@@ -92,6 +92,21 @@ async def test_detect_network_apps() -> None:
 
 
 @pytest.mark.asyncio
+async def test_network_detection_ignores_not_found_on_an_app_port() -> None:
+    mock_dm = MagicMock(spec=DockerManager)
+    mock_dm.available.return_value = False
+    mock_dm.list_containers.return_value = []
+    mock_dm.self_container.return_value = None
+
+    with respx.mock(assert_all_called=False) as respx_mock:
+        # Another local application can use Bazarr's default port and return 404.
+        respx_mock.get("http://127.0.0.1:6767/").respond(404, text="Not Found")
+        apps = await detect_apps(mock_dm, probe_hosts=["127.0.0.1"])
+
+    assert not any(app.kind == ServiceKind.bazarr for app in apps)
+
+
+@pytest.mark.asyncio
 async def test_detect_gluetun_container_without_http_probe() -> None:
     gluetun = ContainerInfo(
         id="vpn1",

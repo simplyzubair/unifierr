@@ -4,19 +4,23 @@ services:
     container_name: unifierr
     restart: unless-stopped
     ports:
-      # Port 8484 is the Unifierr web interface.
-      # Access Unifierr at http://<your-server-ip>:8484
-      - "8484:8484"
+      # Bind to the server itself by default; use an HTTPS reverse proxy for other devices.
+      - "${UNIFIERR_BIND_ADDRESS:-127.0.0.1}:8484:8484"
     environment:
       # Storage root path on your host system.
       # All downloads, media, and app configurations live here.
-      - UNIFIERR_ROOT=${UNIFIERR_ROOT:-/srv/unifierr}
+      UNIFIERR_ROOT: ${UNIFIERR_ROOT:-/srv/unifierr}
+      # Use the Docker socket by default. Set this to a private socket-proxy URL
+      # only after adding the proxy to the same Docker network and removing the
+      # direct socket mount below.
+      UNIFIERR_DOCKER_HOST: ${UNIFIERR_DOCKER_HOST:-unix:///var/run/docker.sock}
+      UNIFIERR_ALLOWED_SERVICE_HOSTS: ${UNIFIERR_ALLOWED_SERVICE_HOSTS:-}
       # User ID and Group ID that will own newly created folders and files.
       # Run 'id' in your terminal to find your user's UID and GID (typically 1000).
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
       # Timezone for logging and schedule management (e.g. America/New_York, UTC).
-      - TZ=${TZ:-UTC}
+      TZ: ${TZ:-UTC}
     volumes:
       # 1. Config directory for Unifierr's internal database and settings.
       - ./config:/config
