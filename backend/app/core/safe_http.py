@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
+from collections.abc import Collection
 from typing import Any
 
 import httpx
@@ -77,6 +78,17 @@ class SafeAsyncClient(httpx.AsyncClient):
     Redirects are disabled because every redirect would need separate validation.
     """
 
+    def __init__(
+        self,
+        *args: Any,
+        trusted_local_hosts: Collection[str] = (),
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._trusted_local_hosts = frozenset(
+            host.lower().rstrip(".") for host in trusted_local_hosts
+        )
+
     async def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
         kwargs["follow_redirects"] = False
         original_url = request.url
@@ -107,7 +119,10 @@ class SafeAsyncClient(httpx.AsyncClient):
             or not literal_address.is_global and not is_local_service_address(literal_address)
         ):
             raise httpx.ConnectError("This service IP address is not allowed.", request=request)
-        local_target = _is_local_host(original_host)
+        local_target = (
+            _is_local_host(original_host)
+            or original_host.lower().rstrip(".") in self._trusted_local_hosts
+        )
         if literal_address is not None:
             local_target = literal_address.is_private or literal_address.is_loopback or is_tailnet_ip(literal_address)
         if request.url.scheme == "http" and not local_target:

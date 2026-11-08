@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -57,6 +58,14 @@ def _match_kind(c: ContainerInfo) -> ServiceKind | None:
     return None
 
 
+def _is_safe_shared_container_host(name: str, networks: set[str], self_networks: set[str]) -> bool:
+    """Trust only a simple Docker name on a network Unifierr can reach."""
+    return bool(
+        re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,127}", name.lower())
+        and ("unifierr" in networks or bool(networks & self_networks))
+    )
+
+
 async def _probe_url(client: httpx.AsyncClient, url: str, healthcheck_path: str) -> bool:
     target = url.rstrip("/") + healthcheck_path
     with contextlib.suppress(Exception):  # noqa: BLE001
@@ -82,6 +91,12 @@ async def detect_apps(
     containers = docker.list_containers(all=False) if docker.available() else []
     self_c = docker.self_container()
     self_nets = set(self_c.networks) if self_c else set()
+    trusted_local_hosts = {
+        c.name.lower()
+        for c in containers
+        if _match_kind(c) in CATALOG
+        and _is_safe_shared_container_host(c.name, set(c.networks), self_nets)
+    }
 
     active_probe_hosts = (
         list(probe_hosts)
@@ -89,7 +104,11 @@ async def detect_apps(
         else ["host.docker.internal", "localhost", "127.0.0.1"]
     )
 
-    async with SafeAsyncClient(timeout=1.0, follow_redirects=False) as http_client:
+    async with SafeAsyncClient(
+        timeout=1.0,
+        follow_redirects=False,
+        trusted_local_hosts=trusted_local_hosts,
+    ) as http_client:
         # 1. Inspect Docker containers
         for c in containers:
             kind = _match_kind(c)
@@ -132,9 +151,6 @@ async def detect_apps(
                     candidate = f"http://{h}:{host_port}"
                     if candidate not in candidates:
                         candidates.append(candidate)
-
-            if not shared_network and container_name_url not in candidates:
-                candidates.append(container_name_url)
 
             # Probe candidates in order
             reachable_url: str | None = None
