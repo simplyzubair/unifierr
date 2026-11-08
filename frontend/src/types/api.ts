@@ -288,6 +288,47 @@ export interface EventItem {
 }
 
 // Settings
+export interface TrashPreset {
+  id: string;
+  name: string;
+  description: string;
+  radarr_slug: string;
+  radarr_profile: string;
+  sonarr_slug: string;
+  sonarr_profile: string;
+}
+
+export interface TrashAppStatus {
+  connected: boolean;
+  reachable: boolean;
+  target_profile: string;
+  synced: boolean;
+  profiles: string[];
+  custom_format_count: number;
+}
+
+export interface TrashSyncRecord {
+  profile: string;
+  synced_at: string;
+  status: 'ok' | 'partial' | 'failed';
+  apps: Record<string, {
+    profile_name: string;
+    profile_action: string;
+    custom_formats_created: string[];
+    custom_formats_updated: string[];
+    custom_formats_unchanged: string[];
+    quality_definitions_updated: string[];
+    user_profiles_kept: string[];
+  }>;
+}
+
+export interface TrashStatus {
+  chosen_profile: string | null;
+  available_profiles: TrashPreset[];
+  last_sync: TrashSyncRecord | null;
+  apps: Record<string, TrashAppStatus>;
+}
+
 export interface SystemSettings {
   root: string;
   puid: number;
@@ -297,6 +338,8 @@ export interface SystemSettings {
   tv_path?: string;
   downloads_path?: string;
   language?: string;
+  trash_profile?: string | null;
+  trash_last_sync?: TrashSyncRecord | null;
 }
 
 // API Error Shape

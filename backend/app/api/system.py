@@ -31,6 +31,7 @@ class SettingsIn(BaseModel):
     language: str | None = Field(default=None, min_length=2, max_length=8, pattern=r"^[a-z]{2,3}(-[A-Za-z]{2})?$")
     puid: int | None = Field(default=None, ge=0, le=65535)
     pgid: int | None = Field(default=None, ge=0, le=65535)
+    trash_profile: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/settings")
@@ -38,6 +39,7 @@ async def get_settings_route(db: AsyncSession = Depends(get_db)):
     s = await get_all_settings(db)
     return {"root": s["root"], "puid": s["puid"], "pgid": s["pgid"], "timezone": s["timezone"],
             "language": s["language"], "media_server": s["media_server"], "setup_complete": s["setup_complete"],
+            "trash_profile": s["trash_profile"], "trash_last_sync": s["trash_last_sync"],
             "movies_path": MOVIES_PATH, "tv_path": TV_PATH, "downloads_path": TORRENTS_MOVIES.rsplit("/", 1)[0],
             "version": __version__}
 

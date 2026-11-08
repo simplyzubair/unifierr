@@ -48,7 +48,17 @@ add_movie(tmdb_id: int, *, root_folder: str | None = None, quality_profile_id: i
           search: bool = True) -> MediaItem    # lookup/tmdb then POST /api/v3/movie; defaults: first root folder, first profile
 delete_movie(movie_id: int, delete_files: bool = False) -> None
 queue() -> list[QueueItem]                     # GET /api/v3/queue?includeMovie=true&pageSize=200
-quality_profiles() -> list[dict]               # [{id,name}]
+quality_profiles() -> list[dict]               # [{id,name,...}]
+create_quality_profile(profile: dict) -> dict  # POST /api/v3/qualityprofile
+update_quality_profile(id: int, profile: dict) -> dict
+ensure_quality_profile(profile: dict) -> tuple[dict, str]  # idempotent by name; never deletes user profiles
+custom_formats() -> list[dict]                 # GET /api/v3/customformat
+create_custom_format(cf: dict) -> dict         # POST /api/v3/customformat
+update_custom_format(id: int, cf: dict) -> dict
+ensure_custom_format(cf: dict) -> tuple[dict, str]         # idempotent by name
+quality_definitions() -> list[dict]            # GET /api/v3/qualitydefinition
+update_quality_definition(id: int, defn: dict) -> dict
+ensure_quality_definitions(defns: list[dict]) -> dict      # idempotent min/preferred/max size update
 root_folders() -> list[dict]                   # [{id,path,freeSpace,accessible}]
 ensure_root_folder(path: str) -> dict          # idempotent
 ensure_qbittorrent_client(*, host: str, port: int, username: str, password: str,
@@ -260,6 +270,8 @@ Auth: cookie `unifierr_session` (httpOnly). **Every POST/PUT/PATCH/DELETE must s
 | GET | /api/jobs/{id} | – | Job `{id,kind,status:"running"|"done"|"failed",steps:[{name,status,message}],log:[str],result}` |
 | POST | /api/setup/adopt | `{kind, base_url?, api_key?, username?, password?}` | Service (tests connection first; reads key from config when omitted & detected) |
 | POST | /api/setup/wire | – | `{job_id}` — auto-integration (see §4) |
+| GET | /api/setup/trash (or /api/trash/status) | – | TrashStatus (chosen_profile, available_profiles, last_sync, apps) |
+| POST | /api/setup/trash (or /api/trash/apply) | `{profile?, kinds?}` | `{job_id, profile}` — sync TRaSH profiles & custom formats |
 | POST | /api/setup/complete | – | status |
 
 ### Services (admin)

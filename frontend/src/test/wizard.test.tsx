@@ -19,6 +19,8 @@ vi.mock('@/api', () => ({
     install: vi.fn(),
     adopt: vi.fn(),
     wire: vi.fn(),
+    getTrashStatus: vi.fn(),
+    applyTrash: vi.fn(),
     complete: vi.fn(),
   },
   jobsApi: {

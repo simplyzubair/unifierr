@@ -9,7 +9,7 @@ from app.adapters.base import ServiceKind
 from app.core.db import get_db
 from app.core.security import require_admin
 from app.models import User
-from app.services import installer, wiring
+from app.services import installer, trash, wiring
 from app.services.common import get_setting, log_event, set_settings
 from app.services.jobs import Job, jobs
 from app.services.services_out import service_out
@@ -34,6 +34,11 @@ class AdoptIn(BaseModel):
     api_key: str | None = Field(default=None, max_length=255)
     username: str | None = Field(default=None, max_length=128)
     password: str | None = Field(default=None, max_length=256)
+
+
+class TrashApplyIn(BaseModel):
+    profile: str | None = Field(default=None, max_length=64)
+    kinds: list[ServiceKind] | None = None
 
 
 @router.get("/setup/environment")
@@ -93,6 +98,27 @@ async def adopt(body: AdoptIn, db: AsyncSession = Depends(get_db)):
 @router.post("/setup/wire")
 async def wire():
     return {"job_id": jobs.start("wire", wiring.run_wiring).id}
+
+
+@router.get("/setup/trash")
+@router.get("/trash/status")
+async def trash_status(db: AsyncSession = Depends(get_db)):
+    return await trash.get_trash_status(db)
+
+
+@router.post("/setup/trash")
+@router.post("/trash/apply")
+async def apply_trash(body: TrashApplyIn | None = None, db: AsyncSession = Depends(get_db)):
+    requested = body.profile if body else None
+    kinds = body.kinds if body else None
+    fallback = await get_setting(db, "trash_profile") or trash.DEFAULT_TRASH_PROFILE
+    chosen = trash.normalize_preset_key(requested or fallback)
+    await set_settings(db, {"trash_profile": chosen})
+
+    async def run(job: Job):
+        return await trash.run_trash_sync(job, chosen, kinds)
+
+    return {"job_id": jobs.start("trash", run).id, "profile": chosen}
 
 
 @router.post("/setup/complete")

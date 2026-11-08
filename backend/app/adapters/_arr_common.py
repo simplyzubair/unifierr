@@ -469,10 +469,115 @@ class ArrAdapter(ArrBase):
     queue_source: ClassVar[str] = "radarr"
     queue_media_key: ClassVar[str] = "movie"
 
-    # ---- lookups common to both ----
+    # ---- lookups & quality / custom format management common to both ----
     async def quality_profiles(self) -> list[dict[str, Any]]:
         data = await self._json("GET", "/qualityprofile")
-        return [{"id": p["id"], "name": p.get("name", "")} for p in data or []]
+        return [{**p, "id": p["id"], "name": p.get("name", "")} for p in data or []]
+
+    async def quality_profile_schema(self) -> dict[str, Any]:
+        try:
+            data = await self._json("GET", "/qualityprofile/schema")
+        except ServiceUnavailable:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    async def create_quality_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        body = {k: v for k, v in profile.items() if k != "id"}
+        resp = await self._api("POST", "/qualityprofile", json=body)
+        return parse_json(resp, self.display_name)
+
+    async def update_quality_profile(self, profile_id: int, profile: dict[str, Any]) -> dict[str, Any]:
+        body = {**profile, "id": int(profile_id)}
+        resp = await self._api("PUT", f"/qualityprofile/{int(profile_id)}", json=body)
+        return parse_json(resp, self.display_name)
+
+    async def ensure_quality_profile(
+        self, profile: dict[str, Any], *, existing: list[dict[str, Any]] | None = None
+    ) -> tuple[dict[str, Any], str]:
+        """Idempotently create or update a quality profile by name. Never deletes user profiles."""
+        profiles = existing if existing is not None else await self.quality_profiles()
+        target_name = str(profile.get("name", "")).strip().lower()
+        match = next((p for p in profiles if str(p.get("name", "")).strip().lower() == target_name), None)
+        if match is None:
+            created = await self.create_quality_profile(profile)
+            return created, "created"
+        if _profile_matches(match, profile):
+            return match, "unchanged"
+        merged = {**match, **profile, "id": int(match["id"])}
+        updated = await self.update_quality_profile(int(match["id"]), merged)
+        return updated, "updated"
+
+    async def custom_formats(self) -> list[dict[str, Any]]:
+        data = await self._json("GET", "/customformat")
+        return list(data or [])
+
+    async def create_custom_format(self, custom_format: dict[str, Any]) -> dict[str, Any]:
+        payload = normalize_cf_payload(custom_format)
+        resp = await self._api("POST", "/customformat", json=payload)
+        return parse_json(resp, self.display_name)
+
+    async def update_custom_format(self, custom_format_id: int, custom_format: dict[str, Any]) -> dict[str, Any]:
+        payload = {**normalize_cf_payload(custom_format), "id": int(custom_format_id)}
+        resp = await self._api("PUT", f"/customformat/{int(custom_format_id)}", json=payload)
+        return parse_json(resp, self.display_name)
+
+    async def ensure_custom_format(
+        self, custom_format: dict[str, Any], *, existing: list[dict[str, Any]] | None = None
+    ) -> tuple[dict[str, Any], str]:
+        """Idempotently create or update a custom format by name."""
+        formats = existing if existing is not None else await self.custom_formats()
+        target_name = str(custom_format.get("name", "")).strip().lower()
+        match = next((f for f in formats if str(f.get("name", "")).strip().lower() == target_name), None)
+        if match is None:
+            created = await self.create_custom_format(custom_format)
+            return created, "created"
+        if _cf_signature(match) == _cf_signature(custom_format):
+            return match, "unchanged"
+        updated = await self.update_custom_format(int(match["id"]), {**match, **normalize_cf_payload(custom_format)})
+        return updated, "updated"
+
+    async def quality_definitions(self) -> list[dict[str, Any]]:
+        data = await self._json("GET", "/qualitydefinition")
+        return list(data or [])
+
+    async def update_quality_definition(self, definition_id: int, definition: dict[str, Any]) -> dict[str, Any]:
+        body = {**definition, "id": int(definition_id)}
+        resp = await self._api("PUT", f"/qualitydefinition/{int(definition_id)}", json=body)
+        return parse_json(resp, self.display_name)
+
+    async def update_quality_definitions(self, definitions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        resp = await self._api("PUT", "/qualitydefinition/update", json=definitions)
+        return list(parse_json(resp, self.display_name) or [])
+
+    async def ensure_quality_definitions(self, definitions: list[dict[str, Any]]) -> dict[str, list[str]]:
+        """Idempotently apply TRaSH quality size limits (`min`, `preferred`, `max`)."""
+        existing = await self.quality_definitions()
+        by_name: dict[str, dict[str, Any]] = {}
+        for d in existing:
+            q_name = str((d.get("quality") or {}).get("name") or d.get("title") or "").strip().lower()
+            if q_name:
+                by_name[q_name] = d
+
+        updated_names: list[str] = []
+        unchanged_names: list[str] = []
+        for item in definitions or []:
+            q_label = str(item.get("quality") or item.get("title") or "").strip()
+            target = by_name.get(q_label.lower())
+            if target is None or target.get("id") is None:
+                continue
+            new_min = float(item.get("min", item.get("minSize", target.get("minSize", 0.0))))
+            new_max = float(item.get("max", item.get("maxSize", target.get("maxSize", 0.0))))
+            new_pref = float(item.get("preferred", item.get("preferredSize", target.get("preferredSize", new_max))))
+            cur_min = float(target.get("minSize") or 0.0)
+            cur_max = float(target.get("maxSize") or 0.0)
+            cur_pref = float(target.get("preferredSize") if target.get("preferredSize") is not None else new_pref)
+            if abs(cur_min - new_min) < 1e-3 and abs(cur_max - new_max) < 1e-3 and abs(cur_pref - new_pref) < 1e-3:
+                unchanged_names.append(q_label)
+                continue
+            body = {**target, "minSize": new_min, "maxSize": new_max, "preferredSize": new_pref}
+            await self.update_quality_definition(int(target["id"]), body)
+            updated_names.append(q_label)
+        return {"updated": updated_names, "unchanged": unchanged_names}
 
     async def root_folders(self) -> list[dict[str, Any]]:
         data = await self._json("GET", "/rootfolder")

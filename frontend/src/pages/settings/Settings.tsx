@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { servicesApi, authApi, systemApi, jobsApi } from '@/api';
+import { servicesApi, authApi, systemApi, jobsApi, trashApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import { ErrorCard } from '@/components/common/ErrorCard';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { TableSkeleton } from '@/components/common/Skeleton';
-import type { ServiceOut, User, HealthStatus, Job } from '@/types/api';
+import type { ServiceOut, User, HealthStatus, Job, TrashStatus } from '@/types/api';
 import {
   Settings as SettingsIcon,
   Layers,
@@ -22,6 +22,8 @@ import {
   Trash2,
   Plus,
   Wand2,
+  Sliders,
+  RefreshCw,
 } from 'lucide-react';
 
 type SettingsTab = 'apps' | 'users' | 'account' | 'backup' | 'remote' | 'about';
@@ -63,6 +65,12 @@ export const Settings: React.FC = () => {
   // Update container image job polling
   const [updateJobModal, setUpdateJobModal] = useState<Job | null>(null);
 
+  // TRaSH quality profiles status & sync
+  const [trashStatus, setTrashStatus] = useState<TrashStatus | null>(null);
+  const [selectedTrashProfile, setSelectedTrashProfile] = useState<string>('hd-1080p');
+  const [trashApplying, setTrashApplying] = useState(false);
+  const [trashJob, setTrashJob] = useState<Job | null>(null);
+
   // ---------------- USERS TAB ----------------
   const [usersList, setUsersList] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -84,7 +92,10 @@ export const Settings: React.FC = () => {
   useEffect(() => {
     setError(null);
     setSuccessMsg(null);
-    if (activeTab === 'apps') loadServices();
+    if (activeTab === 'apps') {
+      loadServices();
+      loadTrashStatus();
+    }
     if (activeTab === 'users' && isAdmin) loadUsers();
   }, [activeTab]);
 
@@ -97,6 +108,48 @@ export const Settings: React.FC = () => {
       setError(err as Error);
     } finally {
       setServicesLoading(false);
+    }
+  };
+
+  const loadTrashStatus = async () => {
+    try {
+      const status = await trashApi.getStatus();
+      setTrashStatus(status);
+      if (status.chosen_profile) {
+        setSelectedTrashProfile(status.chosen_profile);
+      }
+    } catch {
+      // non-fatal if status cannot be loaded
+    }
+  };
+
+  const handleApplyTrashNow = async () => {
+    setTrashApplying(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const { job_id } = await trashApi.apply(selectedTrashProfile);
+      const poll = setInterval(async () => {
+        try {
+          const j = await jobsApi.getJob(job_id);
+          setTrashJob(j);
+          if (j.status === 'done' || j.status === 'failed') {
+            clearInterval(poll);
+            setTrashApplying(false);
+            if (j.status === 'done') {
+              setSuccessMsg('TRaSH quality profiles and custom formats synced successfully.');
+            }
+            loadTrashStatus();
+            loadServices();
+          }
+        } catch {
+          clearInterval(poll);
+          setTrashApplying(false);
+        }
+      }, 1000);
+    } catch (err: unknown) {
+      setError(err as Error);
+      setTrashApplying(false);
     }
   };
 
@@ -433,7 +486,112 @@ export const Settings: React.FC = () => {
 
       {/* ---------------- APPS TAB CONTENT ---------------- */}
       {activeTab === 'apps' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* TRaSH Quality Profiles & Custom Formats Card */}
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
+                  <Sliders className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    TRaSH-Guides Quality Profiles & Custom Formats
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Sync official TRaSH-Guides quality profiles, custom formats, and release sizes into Radarr and Sonarr without deleting your existing profiles.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <select
+                  aria-label="TRaSH Quality Profile Preset"
+                  value={selectedTrashProfile}
+                  onChange={(e) => setSelectedTrashProfile(e.target.value)}
+                  disabled={trashApplying}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  {(trashStatus?.available_profiles || [
+                    { id: 'hd-1080p', name: '1080p HD (Bluray + WEB)' },
+                    { id: 'uhd-2160p', name: '4K UHD (Bluray + WEB)' },
+                    { id: 'remux-1080p', name: '1080p Remux + WEB (Lossless HD)' },
+                    { id: 'remux-2160p', name: '4K Remux + WEB (Lossless 4K)' },
+                    { id: 'web-1080p', name: '1080p WEB Only (Compact)' },
+                    { id: 'web-2160p', name: '4K WEB Only' },
+                  ]).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleApplyTrashNow}
+                  disabled={trashApplying}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 text-xs font-semibold shadow-xs transition disabled:opacity-50"
+                >
+                  {trashApplying && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                  {trashApplying ? 'Syncing TRaSH...' : 'Apply TRaSH Profiles Now'}
+                </button>
+              </div>
+            </div>
+
+            {trashStatus && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {(['radarr', 'sonarr'] as const).map((kind) => {
+                  const appStat = trashStatus.apps?.[kind];
+                  const label = kind === 'radarr' ? 'Radarr' : 'Sonarr';
+                  return (
+                    <div
+                      key={kind}
+                      className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/50 text-xs"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white">{label}</div>
+                        <div className="text-[11px] text-slate-500">
+                          Target profile: <span className="font-mono">{appStat?.target_profile || '—'}</span>
+                          {appStat?.connected && ` • ${appStat.custom_format_count} custom formats`}
+                        </div>
+                      </div>
+                      {!appStat?.connected ? (
+                        <span className="rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 text-[10px] font-semibold">
+                          Not connected
+                        </span>
+                      ) : appStat.synced ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-semibold">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Synced
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-2 py-0.5 text-[10px] font-semibold">
+                          <AlertTriangle className="h-3 w-3 text-amber-500" /> Default profiles only
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {trashJob && trashJob.steps.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                {trashJob.steps.map((step, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                    {step.status === 'ok' && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
+                    {step.status === 'running' && <RefreshCw className="h-4 w-4 text-brand-500 animate-spin shrink-0 mt-0.5" />}
+                    {step.status === 'skipped' && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />}
+                    {step.status === 'failed' && <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />}
+                    <div>
+                      <span className="font-semibold">{step.name}:</span>{' '}
+                      <span className="text-slate-500">{step.message || step.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase text-slate-500">Connected Services</h2>
           </div>

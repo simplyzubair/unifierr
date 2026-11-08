@@ -548,3 +548,100 @@ async def test_health_untranslated_key_uses_wiki_sentence(mock):
         issues = await a.health_issues()
     assert issues[0].message == "No indexers available with rss sync enabled"
     assert issues[0].explanation  # beginner explanation still attached
+
+
+# ---------------------------------------------------------------- quality definitions / custom formats / profiles
+
+
+async def test_ensure_quality_definitions_updates_only_changed(mock):
+    existing = [
+        {"id": 1, "quality": {"id": 7, "name": "Bluray-1080p"}, "title": "Bluray-1080p",
+         "minSize": 10.0, "maxSize": 100.0, "preferredSize": 95.0},
+        {"id": 2, "quality": {"id": 3, "name": "WEBDL-1080p"}, "title": "WEBDL-1080p",
+         "minSize": 12.5, "maxSize": 2000.0, "preferredSize": 1999.0},
+    ]
+    mock.get(f"{RADARR}/api/v3/qualitydefinition").respond(json=existing)
+    put_1 = mock.put(f"{RADARR}/api/v3/qualitydefinition/1").respond(json=existing[0])
+    put_2 = mock.put(f"{RADARR}/api/v3/qualitydefinition/2").respond(json=existing[1])
+    async with radarr() as a:
+        res = await a.ensure_quality_definitions([
+            {"quality": "Bluray-1080p", "min": 50.8, "preferred": 1999.0, "max": 2000.0},
+            {"quality": "WEBDL-1080p", "min": 12.5, "preferred": 1999.0, "max": 2000.0},
+        ])
+    assert res == {"updated": ["Bluray-1080p"], "unchanged": ["WEBDL-1080p"]}
+    assert put_1.called and not put_2.called
+    assert body(put_1)["minSize"] == 50.8 and body(put_1)["maxSize"] == 2000.0
+
+
+async def test_ensure_custom_format_create_unchanged_and_update(mock):
+    cf_trash = {
+        "trash_id": "ed38b889b31be83fda192888e2286d83",
+        "name": "BR-DISK",
+        "includeCustomFormatWhenRenaming": False,
+        "specifications": [{
+            "name": "BR-DISK",
+            "implementation": "ReleaseTitleSpecification",
+            "negate": False,
+            "required": True,
+            "fields": {"value": "BR-DISK"},
+        }],
+    }
+    mock.get(f"{RADARR}/api/v3/customformat").respond(json=[])
+    post = mock.post(f"{RADARR}/api/v3/customformat").respond(json={
+        "id": 10,
+        "name": "BR-DISK",
+        "includeCustomFormatWhenRenaming": False,
+        "specifications": [{
+            "name": "BR-DISK",
+            "implementation": "ReleaseTitleSpecification",
+            "negate": False,
+            "required": True,
+            "fields": [{"name": "value", "value": "BR-DISK", "order": 0}],
+        }],
+    })
+    put = mock.put(f"{RADARR}/api/v3/customformat/10").respond(json={"id": 10, "name": "BR-DISK"})
+
+    async with radarr() as a:
+        created, action1 = await a.ensure_custom_format(cf_trash)
+        assert action1 == "created" and created["id"] == 10
+        assert body(post)["specifications"][0]["fields"] == [{"name": "value", "value": "BR-DISK"}]
+        assert "trash_id" not in body(post)
+
+        # Second call with identical spec is a no-op
+        same, action2 = await a.ensure_custom_format(cf_trash, existing=[created])
+        assert action2 == "unchanged" and same["id"] == 10 and not put.called
+
+        # Modified regex triggers PUT
+        changed_cf = {**cf_trash, "includeCustomFormatWhenRenaming": True}
+        _, action3 = await a.ensure_custom_format(changed_cf, existing=[created])
+        assert action3 == "updated" and put.called and body(put)["includeCustomFormatWhenRenaming"] is True
+
+
+async def test_ensure_quality_profile_preserves_user_profiles(mock):
+    user_prof = {
+        "id": 1, "name": "My Custom Profile", "upgradeAllowed": True, "cutoff": 7, "items": [], "formatItems": [],
+    }
+    trash_prof = {
+        "name": "HD Bluray + WEB",
+        "upgradeAllowed": True,
+        "cutoff": 7,
+        "minFormatScore": 0,
+        "cutoffFormatScore": 10000,
+        "minUpgradeFormatScore": 1,
+        "items": [{"quality": {"id": 7, "name": "Bluray-1080p"}, "items": [], "allowed": True}],
+        "formatItems": [{"format": 10, "name": "BR-DISK", "score": -10000}],
+    }
+    mock.get(f"{RADARR}/api/v3/qualityprofile").respond(json=[user_prof])
+    post = mock.post(f"{RADARR}/api/v3/qualityprofile").respond(json={**trash_prof, "id": 2})
+    put = mock.put(f"{RADARR}/api/v3/qualityprofile/2").respond(json={**trash_prof, "id": 2, "minFormatScore": 10})
+    dele = mock.delete(url__regex=r".*/qualityprofile.*")
+
+    async with radarr() as a:
+        created, act1 = await a.ensure_quality_profile(trash_prof)
+        assert act1 == "created" and created["id"] == 2 and post.called and not dele.called
+
+        _, act2 = await a.ensure_quality_profile(trash_prof, existing=[user_prof, created])
+        assert act2 == "unchanged" and not put.called
+
+        _, act3 = await a.ensure_quality_profile({**trash_prof, "minFormatScore": 10}, existing=[user_prof, created])
+        assert act3 == "updated" and put.called and not dele.called

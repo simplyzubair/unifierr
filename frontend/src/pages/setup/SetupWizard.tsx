@@ -10,6 +10,7 @@ import type {
   DetectedApp,
   FolderReport,
   ServiceKind,
+  TrashPreset,
   Job,
 } from '@/types/api';
 import {
@@ -38,7 +39,65 @@ const STEPS = [
   'Apps & Services',
   'Installing Apps',
   'Connecting Stack',
+  'Quality Profiles',
   'Ready to Stream',
+];
+
+const DEFAULT_TRASH_PRESETS: TrashPreset[] = [
+  {
+    id: 'hd-1080p',
+    name: '1080p HD (Bluray + WEB)',
+    description: 'Best 1080p Blu-ray and WEB-DL releases, blocking low-quality encodes, CAMs, and full discs.',
+    radarr_slug: 'hd-bluray-web',
+    radarr_profile: 'HD Bluray + WEB',
+    sonarr_slug: 'web-1080p',
+    sonarr_profile: 'WEB-1080p',
+  },
+  {
+    id: 'uhd-2160p',
+    name: '4K UHD (Bluray + WEB)',
+    description: 'High-bitrate 2160p 4K Blu-ray and WEB-DL releases with TRaSH release group tiers.',
+    radarr_slug: 'uhd-bluray-web',
+    radarr_profile: 'UHD Bluray + WEB',
+    sonarr_slug: 'web-2160p',
+    sonarr_profile: 'WEB-2160p',
+  },
+  {
+    id: 'remux-1080p',
+    name: '1080p Remux + WEB (Lossless HD)',
+    description: 'Untouched lossless 1080p Blu-ray Remuxes and top-tier 1080p WEB-DL releases.',
+    radarr_slug: 'remux-web-1080p',
+    radarr_profile: 'Remux + WEB 1080p',
+    sonarr_slug: 'remux-web-1080p',
+    sonarr_profile: 'Remux + WEB 1080p',
+  },
+  {
+    id: 'remux-2160p',
+    name: '4K Remux + WEB (Lossless 4K)',
+    description: 'Untouched lossless 2160p UHD Blu-ray Remuxes and top-tier 4K WEB-DL releases.',
+    radarr_slug: 'remux-web-2160p',
+    radarr_profile: 'Remux + WEB 2160p',
+    sonarr_slug: 'remux-web-2160p',
+    sonarr_profile: 'Remux + WEB 2160p',
+  },
+  {
+    id: 'web-1080p',
+    name: '1080p WEB Only (Compact)',
+    description: 'Streaming 1080p WEB-DL releases only for smaller file sizes and fast downloads.',
+    radarr_slug: 'web-1080p',
+    radarr_profile: 'WEB 1080p',
+    sonarr_slug: 'web-1080p',
+    sonarr_profile: 'WEB-1080p',
+  },
+  {
+    id: 'web-2160p',
+    name: '4K WEB Only',
+    description: 'Streaming 2160p 4K WEB-DL releases only.',
+    radarr_slug: 'web-2160p',
+    radarr_profile: 'WEB 2160p',
+    sonarr_slug: 'web-2160p',
+    sonarr_profile: 'WEB-2160p',
+  },
 ];
 
 const ALL_APPS: Array<{ kind: ServiceKind; name: string; desc: string; defaultInstall: boolean }> = [
@@ -94,6 +153,12 @@ export const SetupWizard: React.FC = () => {
   // Step 5: Wire Job
   const [wireJob, setWireJob] = useState<Job | null>(null);
   const [showWireLogs, setShowWireLogs] = useState(false);
+
+  // Step 6: TRaSH Quality Profiles
+  const [trashPresets, setTrashPresets] = useState<TrashPreset[]>(DEFAULT_TRASH_PRESETS);
+  const [selectedTrashProfile, setSelectedTrashProfile] = useState<string>('hd-1080p');
+  const [trashJob, setTrashJob] = useState<Job | null>(null);
+  const [showTrashLogs, setShowTrashLogs] = useState(false);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -241,7 +306,39 @@ export const SetupWizard: React.FC = () => {
     }
   };
 
-  // Step 6: Complete
+  // Step 6: Load & Apply TRaSH Quality Profiles
+  const loadTrashStatus = async () => {
+    try {
+      const status = await setupApi.getTrashStatus();
+      if (status.available_profiles && status.available_profiles.length > 0) {
+        setTrashPresets(status.available_profiles);
+      }
+      if (status.chosen_profile) {
+        setSelectedTrashProfile(status.chosen_profile);
+      }
+    } catch {
+      // keep default presets if endpoint not yet reachable
+    }
+  };
+
+  const startTrashSync = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { job_id } = await setupApi.applyTrash(selectedTrashProfile);
+      pollJob(job_id, (job) => {
+        setTrashJob(job);
+        if (job.status === 'done' || job.status === 'failed') {
+          setLoading(false);
+        }
+      });
+    } catch (err: unknown) {
+      setError(err as Error);
+      setLoading(false);
+    }
+  };
+
+  // Step 7: Complete
   const handleComplete = async () => {
     setLoading(true);
     setError(null);
@@ -1115,7 +1212,160 @@ export const SetupWizard: React.FC = () => {
             <button
               type="button"
               disabled={wireJob?.status === 'running'}
-              onClick={() => setCurrentStep(5)}
+              onClick={() => {
+                setCurrentStep(5);
+                loadTrashStatus();
+              }}
+              className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
+            >
+              Continue to Quality Profiles
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 5: Apply TRaSH Quality Profiles */}
+      {currentStep === 5 && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
+              <Sliders className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Apply TRaSH Quality Profiles
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Sync community-curated TRaSH-Guides quality profiles, custom formats, and release size limits into Radarr and Sonarr. Existing user profiles are never deleted.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {trashPresets.map((preset) => {
+              const selected = selectedTrashProfile === preset.id;
+              return (
+                <label
+                  key={preset.id}
+                  className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition ${
+                    selected
+                      ? 'border-brand-500 bg-brand-50/40 dark:bg-brand-950/20 ring-1 ring-brand-500'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/40 hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="trashProfile"
+                    value={preset.id}
+                    checked={selected}
+                    onChange={() => setSelectedTrashProfile(preset.id)}
+                    className="mt-1 text-brand-600 focus:ring-brand-500"
+                  />
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      {preset.name}
+                      {preset.id === 'hd-1080p' && (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {preset.description}
+                    </p>
+                    <div className="text-[11px] font-mono text-slate-400 pt-0.5">
+                      Radarr: {preset.radarr_profile} • Sonarr: {preset.sonarr_profile}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={startTrashSync}
+              disabled={loading || trashJob?.status === 'running'}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold py-2.5 px-5 text-xs hover:opacity-90 transition disabled:opacity-50"
+            >
+              {trashJob?.status === 'running' ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {trashJob ? 'Re-apply TRaSH Quality Profiles' : 'Apply TRaSH Quality Profiles'}
+            </button>
+          </div>
+
+          {trashJob && (
+            <div className="space-y-3">
+              {trashJob.steps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start justify-between gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50"
+                >
+                  <div className="flex items-start gap-3">
+                    {step.status === 'ok' && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />}
+                    {step.status === 'running' && <RefreshCw className="h-5 w-5 text-brand-500 animate-spin shrink-0 mt-0.5" />}
+                    {step.status === 'pending' && <div className="h-5 w-5 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0 mt-0.5" />}
+                    {step.status === 'skipped' && <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />}
+                    {step.status === 'failed' && <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />}
+
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">{step.name}</div>
+                      {step.message && <div className="text-xs text-slate-500 mt-0.5">{step.message}</div>}
+                      {step.explanation && (
+                        <div className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                          {step.explanation}
+                        </div>
+                      )}
+                      {step.fix && (
+                        <div className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          Suggested Fix: {step.fix}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold capitalize text-slate-400">{step.status}</span>
+                </div>
+              ))}
+
+              {trashJob.log && trashJob.log.length > 0 && (
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowTrashLogs(!showTrashLogs)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  >
+                    <FileCode className="h-3.5 w-3.5" />
+                    {showTrashLogs ? 'Hide detailed log' : 'Show detailed log'}
+                    {showTrashLogs ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+
+                  {showTrashLogs && (
+                    <pre className="mt-2 p-3 rounded-xl bg-slate-950 text-slate-300 font-mono text-[11px] max-h-48 overflow-y-auto leading-relaxed">
+                      {trashJob.log.join('\n')}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(4)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <button
+              type="button"
+              disabled={trashJob?.status === 'running'}
+              onClick={() => setCurrentStep(6)}
               className="flex items-center gap-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-6 text-sm shadow-md shadow-brand-500/20 transition disabled:opacity-50"
             >
               Finish Setup
@@ -1125,8 +1375,8 @@ export const SetupWizard: React.FC = () => {
         </div>
       )}
 
-      {/* STEP 5: All Done Celebration */}
-      {currentStep === 5 && (
+      {/* STEP 6: All Done Celebration */}
+      {currentStep === 6 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-6 shadow-sm">
           <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-10 h-10" />
@@ -1144,6 +1394,9 @@ export const SetupWizard: React.FC = () => {
           <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 max-w-sm mx-auto text-left text-xs space-y-2 text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Single-folder TRaSH storage
+            </div>
+            <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" /> TRaSH quality profiles & custom formats
             </div>
             <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Automated movie & series requests

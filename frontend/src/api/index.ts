@@ -19,6 +19,7 @@ import type {
   HealthOverview,
   EventItem,
   SystemSettings,
+  TrashStatus,
   MediaType,
 } from '@/types/api';
 
@@ -123,9 +124,35 @@ export const setupApi = {
       method: 'POST',
     }),
 
+  getTrashStatus: () =>
+    apiClient<TrashStatus>('/api/setup/trash', {
+      method: 'GET',
+    }),
+
+  applyTrash: (profile?: string, kinds?: ServiceKind[]) =>
+    apiClient<{ job_id: string; profile: string }>('/api/setup/trash', {
+      method: 'POST',
+      body: JSON.stringify({ profile, kinds }),
+    }),
+
   complete: () =>
     apiClient<{ status: string }>('/api/setup/complete', {
       method: 'POST',
+    }),
+};
+
+// ---------------- TRASH QUALITY PROFILES ----------------
+
+export const trashApi = {
+  getStatus: () =>
+    apiClient<TrashStatus>('/api/trash/status', {
+      method: 'GET',
+    }),
+
+  apply: (profile?: string, kinds?: ServiceKind[]) =>
+    apiClient<{ job_id: string; profile: string }>('/api/trash/apply', {
+      method: 'POST',
+      body: JSON.stringify({ profile, kinds }),
     }),
 };
 

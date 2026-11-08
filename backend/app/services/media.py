@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.base import MediaItem, QueueItem, ServiceKind
 from app.core.errors import UnifierrError
 from app.models import MediaRequest, User
-from app.services.common import MOVIES_PATH, TV_PATH, adapter_for, get_service, log_event
+from app.services.common import MOVIES_PATH, TV_PATH, adapter_for, get_service, get_setting, log_event
 
 log = logging.getLogger("unifierr.media")
 
@@ -157,19 +157,34 @@ async def _root_folder(arr, preferred: str) -> str:
     return paths[0]
 
 
+async def _preferred_profile_id(db: AsyncSession, arr, kind: ServiceKind) -> int | None:
+    choice = await get_setting(db, "trash_profile")
+    if not choice or not hasattr(arr, "quality_profiles"):
+        return None
+    from app.services.trash import target_profile_name
+
+    wanted = target_profile_name(kind, str(choice)).strip().lower()
+    for p in await arr.quality_profiles():
+        if str(p.get("name", "")).strip().lower() == wanted and p.get("id") is not None:
+            return int(p["id"])
+    return None
+
+
 async def add_to_arr(db: AsyncSession, req: MediaRequest) -> None:
     """Send an approved request to Radarr/Sonarr (search starts immediately)."""
     kind = ARR_FOR[req.media_type]
     async with adapter_for(db, kind) as arr:
         root = await _root_folder(arr, MOVIES_PATH if req.media_type == "movie" else TV_PATH)
+        profile_id = await _preferred_profile_id(db, arr, kind)
+        kw = {"quality_profile_id": profile_id} if profile_id is not None else {}
         if req.media_type == "movie":
             if not req.tmdb_id:
                 raise UnifierrError("This movie has no TMDB id, so Radarr cannot add it.")
-            item = await arr.add_movie(req.tmdb_id, root_folder=root, search=True)
+            item = await arr.add_movie(req.tmdb_id, root_folder=root, search=True, **kw)
         else:
             if not req.tvdb_id:
                 raise UnifierrError("This show has no TVDB id, so Sonarr cannot add it.")
-            item = await arr.add_series(req.tvdb_id, root_folder=root, search=True)
+            item = await arr.add_series(req.tvdb_id, root_folder=root, search=True, **kw)
     req.external_id = item.external_id
     req.status = "approved"
 

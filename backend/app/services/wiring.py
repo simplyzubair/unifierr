@@ -216,9 +216,20 @@ async def _wire_notifications(db: AsyncSession, job: Job) -> None:
                 job.fail(s, exc)
 
 
+async def _wire_trash_profiles(db: AsyncSession, job: Job) -> None:
+    profile_choice = await get_setting(db, "trash_profile")
+    if not profile_choice:
+        return
+    from app.services.trash import sync_app_trash
+
+    for kind in (ServiceKind.radarr, ServiceKind.sonarr):
+        await sync_app_trash(db, job, kind, str(profile_choice))
+
+
 async def run_wiring(job: Job) -> dict:
     async with sessionmaker()() as db:
         await _wire_arr_basics(db, job)
+        await _wire_trash_profiles(db, job)
         await _wire_prowlarr(db, job)
         await _wire_bazarr(db, job)
         has_jf = await _wire_jellyfin(db, job)

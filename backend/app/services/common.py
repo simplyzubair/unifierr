@@ -23,6 +23,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "timezone": "UTC",
     "language": "en",
     "media_server": None,  # jellyfin | plex
+    "trash_profile": None,  # hd-1080p | uhd-2160p | remux-1080p | remux-2160p | web-1080p | web-2160p
+    "trash_last_sync": None,
 }
 
 # Paths as seen INSIDE the managed containers (all mount <root>/data at /data).
