@@ -1,0 +1,24 @@
+services:
+  unifierr:
+    image: unifierr:local
+    container_name: unifierr
+    restart: unless-stopped
+    ports:
+      - "${UNIFIERR_BIND_ADDRESS:-127.0.0.1}:8484:8484"
+    environment:
+      UNIFIERR_ROOT: /data
+      TZ: ${TZ:-UTC}
+      UNIFIERR_SECURE_COOKIES: "true"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - media-stack
+
+networks:
+  media-stack:
+    external: true
+    name: ${UNIFIERR_DOCKER_NETWORK:-media-stack}

@@ -19,3 +19,4 @@ backend/app/static/
 .env
 secret.key
 *.egg-info/
+artifacts/

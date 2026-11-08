@@ -1,9 +1,20 @@
-# Unifierr server package status
+# Download site deployment
 
-The server download is not ready for general NAS installation yet.
+The domain's DNS currently points to the existing SkillsGeek VPS, which also serves `noterr.skillsgeek.com`. Install this site's files under a dedicated Nginx host root for `unifierr.skillsgeek.com`; do not replace the default root or another app's vhost.
 
-The repository does not currently contain a published, beginner-ready server image. The Synology trial configuration uses a locally built image and an existing Docker network, so distributing its Compose file by itself would not install Unifierr on a fresh NAS. Its machine-specific configuration is intentionally not copied into this public download bundle.
+Expected layout:
 
-The Windows and Android client previews need a running Unifierr server. The client asks for the server address when it first opens; use an HTTPS address that the device can reach securely.
+```text
+/var/www/unifierr/
+  index.html
+  downloads/
+    SHA256SUMS.txt
+    unifierr-windows-preview-0.1.2.exe
+    unifierr-macos-preview-0.1.2.dmg
+    unifierr-android-arm64-preview-0.1.2.apk
+    unifierr-synology-server-preview-0.1.0.zip
+```
 
-When the server image and general NAS setup are ready, this page should provide one server bundle, an editable Compose file, and a short setup and backup guide.
+The TLS certificate is issued for `unifierr.skillsgeek.com` with Certbot after the dedicated Nginx host is enabled. Do not serve the preview through the default virtual host; the default host currently belongs to another site.
+
+`index.html` is static and has no client-side script or external runtime dependencies. Recalculate `SHA256SUMS.txt` whenever any published download changes.
