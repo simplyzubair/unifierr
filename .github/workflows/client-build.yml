@@ -135,7 +135,7 @@ jobs:
               apks = arm64
           if len(apks) != 1:
               raise SystemExit(f"Expected one Android APK (or one arm64 APK), found {len(apks)}")
-          shutil.copy2(apks[0], output / f"unifierr-android-arm64-preview-{version}.apk")
+          shutil.copy2(apks[0], output / f"unifierr-android-preview-{version}.apk")
 
           entries = []
           for path in sorted(output.iterdir()):
@@ -151,7 +151,7 @@ jobs:
           version="${GITHUB_REF_NAME#client-v}"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" release-assets/* \
             --title "Unifierr client preview ${version}" \
-            --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is an ARM64 debug APK. The server must already be running and reachable over HTTPS." \
+            --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is a universal debug APK. The server must already be running and reachable over HTTPS." \
             --prerelease
         env:
           GH_TOKEN: ${{ github.token }}
