@@ -149,7 +149,7 @@ jobs:
       - name: Publish prerelease assets
         run: |
           version="${GITHUB_REF_NAME#client-v}"
-          gh release create "$GITHUB_REF_NAME" release-assets/* \
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" release-assets/* \
             --title "Unifierr client preview ${version}" \
             --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is an ARM64 debug APK. The server must already be running and reachable over HTTPS." \
             --prerelease
