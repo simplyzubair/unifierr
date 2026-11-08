@@ -23,7 +23,7 @@ def run(name: str, target: str | None = None, manager: DockerManager | None = No
     manager = manager or DockerManager(get_settings().docker_host or None)
     old_image = None
     try:
-        old_image = manager.client.containers.get(name).image.id
+        old_image = manager.client.containers.get(name).attrs.get("Image")
         # Pulling was already done by the server; this only recreates (and checks) the container.
         manager.update(name, print, pull=False, require_managed=False, healthy_timeout=150)
         ok, message = True, "Updated and healthy."

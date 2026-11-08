@@ -537,17 +537,31 @@ class DockerManager:
                 pass
         return None
 
-    def _user_env_and_labels(self, c: Any, env: list[str], labels: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Drop env vars and labels that the OLD image baked in, so the new image's own values apply
-        (otherwise a recreate would pin e.g. the old build revision)."""
+    def _image_config(self, ref: str) -> dict[str, Any] | None:
         try:
-            image_cfg = self.client.images.get(c.image.id).attrs["Config"]
-            baked_env = set(image_cfg.get("Env") or [])
-            baked_labels = dict(image_cfg.get("Labels") or {})
-        except Exception:  # noqa: BLE001 - keep everything rather than lose a setting
-            return env, labels
-        return ([e for e in env if e not in baked_env],
-                {k: v for k, v in labels.items() if baked_labels.get(k) != v})
+            return self.client.images.get(ref).attrs["Config"]
+        except Exception:  # noqa: BLE001 - unknown image
+            return None
+
+    def _user_env_and_labels(
+        self, c: Any, env: list[str], labels: dict[str, str], image_ref: str
+    ) -> tuple[list[str], dict[str, str]]:
+        """Keep what the owner chose; drop env vars and labels that an IMAGE baked in, so the new image's own
+        values apply (a recreate must not pin e.g. the old build revision)."""
+        old = self._image_config(c.attrs.get("Image", ""))
+        if old is not None:
+            baked_env, baked_labels = set(old.get("Env") or []), dict(old.get("Labels") or {})
+            return ([e for e in env if e not in baked_env],
+                    {k: v for k, v in labels.items() if baked_labels.get(k) != v})
+        # Docker's containerd image store forgets an image's record once its tag moves to a newer image, even
+        # while a container still runs it. Then the new image decides: any name it defines is its own.
+        new = self._image_config(image_ref)
+        if new is None:
+            return env, labels  # keep everything rather than lose a setting
+        new_env_names = {e.split("=", 1)[0] for e in new.get("Env") or []}
+        new_label_names = set(new.get("Labels") or {})
+        return ([e for e in env if e.split("=", 1)[0] not in new_env_names],
+                {k: v for k, v in labels.items() if k not in new_label_names})
 
     @staticmethod
     def _wait_healthy(c: Any, timeout: float) -> None:
@@ -610,7 +624,7 @@ class DockerManager:
         network_settings = attrs.get("NetworkSettings", {}) or {}
 
         image_name = config.get("Image", "")
-        env, labels = self._user_env_and_labels(c, config.get("Env") or [], labels)
+        env, labels = self._user_env_and_labels(c, config.get("Env") or [], labels, image_name)
         binds = host_config.get("Binds", [])
         port_bindings = host_config.get("PortBindings", {})
         restart_policy = host_config.get("RestartPolicy") or {"Name": "unless-stopped"}

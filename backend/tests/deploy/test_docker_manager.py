@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -288,8 +289,8 @@ def _self_update_fixture(*, new_state: dict | None = None):
     client = MagicMock()
     old_c = MagicMock()
     old_c.labels = {"com.docker.compose.project": "unifierr", "org.opencontainers.image.revision": "OLD"}
-    old_c.image.id = "sha256:old"
     old_c.attrs = {
+        "Image": "sha256:old",
         "Config": {
             "Image": "ghcr.io/simplyzubair/unifierr:latest",
             "User": "",
@@ -329,6 +330,26 @@ def test_self_update_keeps_user_settings_but_not_old_images_baked_values() -> No
     assert kwargs["labels"]["com.docker.compose.project"] == "unifierr"
     client.api.pull.assert_not_called()
     old_c.remove.assert_called_with(force=True)
+
+
+def test_self_update_when_old_image_record_is_gone_lets_the_new_image_win() -> None:
+    """Seen on a real Docker 29 host: the old image id no longer resolves, so the NEW image's variables decide."""
+    client, old_c, new_c = _self_update_fixture()
+    new_image_config = {"Config": {"Env": ["PATH=/usr/bin", "UNIFIERR_REVISION=NEW"],
+                                   "Labels": {"org.opencontainers.image.revision": "NEW"}}}
+
+    def images_get(ref):
+        if ref == "sha256:old":
+            raise LookupError("No such image: sha256:old")
+        return SimpleNamespace(attrs=new_image_config)
+
+    client.images.get.side_effect = images_get
+    DockerManager(client=client).update("unifierr", pull=False, require_managed=False, healthy_timeout=5)
+
+    kwargs = client.containers.create.call_args.kwargs
+    assert kwargs["environment"] == ["TZ=Asia/Karachi", "UNIFIERR_ROOT=/data"]  # old revision NOT pinned
+    assert "org.opencontainers.image.revision" not in kwargs["labels"]
+    assert kwargs["labels"]["com.docker.compose.project"] == "unifierr"
 
 
 def test_self_update_rolls_back_when_new_version_is_unhealthy() -> None:

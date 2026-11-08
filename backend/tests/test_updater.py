@@ -12,11 +12,12 @@ from tests.conftest import CSRF, make_admin
 def fake_manager(ref="ghcr.io/me/unifierr:latest", running_id="sha256:aaa", newest_id="sha256:bbb", pull_error=None):
     me = SimpleNamespace(id="c1", name="unifierr")
     container = MagicMock()
-    container.attrs = {"Config": {"Image": ref}}
-    container.image = SimpleNamespace(id=running_id, labels={"org.opencontainers.image.revision": "old1"},
-                                      attrs={"Created": "2026-11-01"})
+    container.attrs = {"Config": {"Image": ref}, "Image": running_id}
+    running = SimpleNamespace(id=running_id, labels={"org.opencontainers.image.revision": "old1"},
+                              attrs={"Created": "2026-11-01"})
     client = MagicMock()
     client.containers.get.return_value = container
+    client.images.get.return_value = running
     if pull_error:
         client.images.pull.side_effect = pull_error
     else:
@@ -41,6 +42,15 @@ def test_newer_image_is_reported_and_same_image_is_not():
     assert info["current"]["revision"] == "old1" and info["latest"]["revision"] == "new2"
     info, _ = updater.check_now(fake_manager(newest_id="sha256:aaa"), pull=True)
     assert info["available"] is False
+
+
+def test_running_image_record_gone_still_works():
+    """Docker's containerd image store drops the record of an image whose tag moved on, while it still runs."""
+    dm = fake_manager()
+    dm.client.images.get.side_effect = LookupError("No such image")
+    info, target = updater.check_now(dm, pull=True)
+    assert info["supported"] and info["current"] == {"id": "aaa", "revision": None, "created": None}
+    assert info["available"] is True and target == "sha256:bbb"
 
 
 def test_check_without_pull_never_contacts_the_registry():

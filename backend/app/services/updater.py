@@ -42,6 +42,16 @@ def _describe(image: Any) -> dict[str, Any]:
     }
 
 
+def _describe_running(dm: DockerManager, container: Any) -> tuple[dict[str, Any], str]:
+    """What this container runs. Uses the id stored ON the container: after a newer image takes over the tag,
+    Docker's containerd image store may no longer have a record for the image that is still running."""
+    image_id = container.attrs.get("Image", "")
+    try:
+        return _describe(dm.client.images.get(image_id)), image_id
+    except Exception:  # noqa: BLE001 - record gone; the id alone is enough
+        return {"id": image_id.removeprefix("sha256:")[:12], "revision": None, "created": None}, image_id
+
+
 def _auth() -> dict[str, str] | None:
     s = get_settings()
     return {"username": s.registry_user, "password": s.registry_token} if s.registry_user and s.registry_token else None
@@ -67,8 +77,8 @@ def check_now(dm: DockerManager, *, pull: bool) -> tuple[dict[str, Any], str | N
     if "/" not in ref:
         return _unsupported(f"This Unifierr was built on this computer (image '{ref}'), not downloaded from a "
                             "registry. Switch the compose file to a published image to get updates.")
-    info: dict[str, Any] = {"supported": True, "image": ref, "container": me.name,
-                            "current": _describe(container.image)}
+    current, running_id = _describe_running(dm, container)
+    info: dict[str, Any] = {"supported": True, "image": ref, "container": me.name, "current": current}
     if not pull:
         return info, None
     try:
@@ -76,7 +86,7 @@ def check_now(dm: DockerManager, *, pull: bool) -> tuple[dict[str, Any], str | N
         latest = latest[0] if isinstance(latest, list) else latest
     except Exception as exc:  # noqa: BLE001 - registry/network errors vary widely
         return {**info, "error": f"Could not download the newest image: {redact(str(exc))[:300]}"}, None
-    return {**info, "latest": _describe(latest), "available": latest.id != container.image.id}, latest.id
+    return {**info, "latest": _describe(latest), "available": latest.id != running_id}, latest.id
 
 
 def read_result() -> dict[str, Any] | None:
