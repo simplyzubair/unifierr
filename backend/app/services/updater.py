@@ -32,6 +32,8 @@ REVISION_LABEL = "org.opencontainers.image.revision"
 
 # What the last registry check found. Kept in memory; one check per interval is cheap to repeat after a restart.
 _checked: dict[str, Any] | None = None
+# One update decision at a time: a manual click and the automatic loop must not both start a swap.
+_apply_lock = asyncio.Lock()
 
 
 def _describe(image: Any) -> dict[str, Any]:
@@ -97,9 +99,20 @@ def read_result() -> dict[str, Any] | None:
 
 
 def start_helper(dm: DockerManager, name: str, target_id: str) -> None:
-    """Run the swap in a second container, because this one is about to be stopped."""
-    with contextlib.suppress(Exception):
-        dm.client.containers.get(f"{name}-updater").remove(force=True)
+    """Run the swap in a second container, because this one is about to be stopped.
+    Never touches a helper that is still running: removing it mid-swap could leave Unifierr stopped."""
+    helper = f"{name}-updater"
+    try:
+        existing = dm.client.containers.get(helper)
+    except Exception:  # noqa: BLE001 - no helper exists, the normal case
+        existing = None
+    if existing is not None:
+        if existing.status in ("created", "running", "restarting"):
+            raise UnifierrError("An update is already in progress", status_code=409,
+                                explanation="Another update is still being installed.",
+                                fix="Wait a minute; Unifierr restarts by itself when it is done.")
+        with contextlib.suppress(Exception):
+            existing.remove(force=True)  # a finished helper that was not auto-removed
     dm.client.containers.run(
         target_id, name=f"{name}-updater", entrypoint=["python", "-m", "app.deploy.selfupdate"],
         command=[name, target_id], volumes_from=[name], detach=True, auto_remove=True, network_mode="none",
@@ -137,23 +150,28 @@ async def status(db, *, refresh: bool = False) -> dict[str, Any]:
 
 async def apply(db, who: str) -> dict[str, Any]:
     """Check for the newest image and, if there is one, start the swap. The server restarts shortly after."""
-    info, target = await run_in_threadpool(check_now, docker_manager(), pull=True)
-    _remember(info)
-    if not info.get("supported"):
-        raise UnifierrError("Updates are not available for this installation", explanation=info["reason"],
-                            status_code=409)
-    if info.get("error"):
-        raise UnifierrError("Could not check for updates", explanation=info["error"],
-                            fix="Check the server's internet connection and the registry login.", status_code=502)
-    if not info["available"] or target is None:
-        return {"started": False, "message": "You already have the newest version."}
-    await run_in_threadpool(start_helper, docker_manager(), info["container"], target)
-    await log_event(db, "update", f"{who} started an update to {info['latest']['revision'] or info['latest']['id']}.")
-    return {"started": True, "message": "Updating. Unifierr restarts in about a minute."}
+    async with _apply_lock:
+        info, target = await run_in_threadpool(check_now, docker_manager(), pull=True)
+        _remember(info)
+        if not info.get("supported"):
+            raise UnifierrError("Updates are not available for this installation", explanation=info["reason"],
+                                status_code=409)
+        if info.get("error"):
+            raise UnifierrError("Could not check for updates", explanation=info["error"],
+                                fix="Check the server's internet connection and the registry login.",
+                                status_code=502)
+        if not info["available"] or target is None:
+            return {"started": False, "message": "You already have the newest version."}
+        await run_in_threadpool(start_helper, docker_manager(), info["container"], target)
+        revision = info["latest"]["revision"] or info["latest"]["id"]
+        await log_event(db, "update", f"{who} started an update to {revision}.")
+        return {"started": True, "message": "Updating. Unifierr restarts in about a minute."}
 
 
 async def _auto_tick() -> None:
-    async with sessionmaker()() as db:
+    if _apply_lock.locked():
+        return  # a manual update is being decided right now
+    async with _apply_lock, sessionmaker()() as db:
         if not await get_setting(db, "auto_update") or jobs.any_running():
             return
         info, target = await run_in_threadpool(check_now, docker_manager(), pull=True)
@@ -163,7 +181,11 @@ async def _auto_tick() -> None:
         previous = read_result()
         if previous and not previous.get("ok") and previous.get("to") == target:
             return  # this exact image already failed (and was rolled back); wait for a newer one
-        await run_in_threadpool(start_helper, docker_manager(), info["container"], target)
+        try:
+            await run_in_threadpool(start_helper, docker_manager(), info["container"], target)
+        except UnifierrError as exc:  # e.g. a manual update is already running: nothing to do
+            log.info("Automatic update skipped: %s", exc.message)
+            return
         await log_event(db, "update", "Automatic update started.")
 
 

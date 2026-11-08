@@ -151,6 +151,14 @@ socket must be mounted. The Updates page explains what is missing. The phone, ta
 server's website, so they get new screens as soon as the server updates; a new app file is only needed when the
 app itself changes.
 
+If the power fails or Docker is killed in the few seconds between stopping the old Unifierr and starting the new
+one, Unifierr can be left stopped. Nothing is lost (your data lives in `./config`), and the previous version is
+still on disk under the name `unifierr-old`. Bring it back with:
+
+```bash
+docker rm -f unifierr 2>/dev/null; docker rename unifierr-old unifierr && docker start unifierr
+```
+
 To update by hand instead:
 
 ```bash

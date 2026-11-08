@@ -131,3 +131,56 @@ async def test_update_api_is_admin_only_and_toggle_persists(client, monkeypatch)
     assert (await client.get("/api/system/update")).json()["auto_update"] is True
     r = await client.post("/api/system/update/apply", headers=CSRF)
     assert r.status_code == 409 and "built on this computer" in r.json()["explanation"]
+
+
+def _stateful_manager():
+    """Docker that remembers a started helper, like the real thing."""
+    dm = fake_manager()
+    helper = SimpleNamespace(status="running", remove=MagicMock())
+    started = {"on": False}
+    me = dm.client.containers.get.return_value
+
+    def get(name):
+        if name.endswith("-updater"):
+            if started["on"]:
+                return helper
+            raise LookupError(name)
+        return me
+
+    dm.client.containers.get.side_effect = get
+    dm.client.containers.run.side_effect = lambda *a, **k: started.update(on=True)
+    return dm, helper
+
+
+def test_running_helper_is_never_removed_and_blocks_a_second_update():
+    dm, helper = _stateful_manager()
+    updater.start_helper(dm, "unifierr", "sha256:bbb")
+    with pytest.raises(updater.UnifierrError) as err:
+        updater.start_helper(dm, "unifierr", "sha256:bbb")
+    assert err.value.status_code == 409 and "already in progress" in err.value.message
+    helper.remove.assert_not_called()
+    assert dm.client.containers.run.call_count == 1
+
+
+def test_finished_leftover_helper_is_replaced():
+    dm, helper = _stateful_manager()
+    updater.start_helper(dm, "unifierr", "sha256:bbb")
+    helper.status = "exited"
+    updater.start_helper(dm, "unifierr", "sha256:bbb")
+    helper.remove.assert_called_once_with(force=True)
+    assert dm.client.containers.run.call_count == 2
+
+
+async def test_two_simultaneous_applies_start_exactly_one_swap(client, monkeypatch):
+    import asyncio
+
+    await make_admin(client)
+    dm, _ = _stateful_manager()
+    monkeypatch.setattr(updater, "docker_manager", lambda: dm)
+    from app.core.db import sessionmaker
+
+    async with sessionmaker()() as db:
+        results = await asyncio.gather(updater.apply(db, "a"), updater.apply(db, "b"), return_exceptions=True)
+    assert dm.client.containers.run.call_count == 1
+    assert sum(isinstance(r, dict) and r["started"] for r in results) == 1
+    assert any(isinstance(r, updater.UnifierrError) for r in results)  # the other was refused, not duplicated
