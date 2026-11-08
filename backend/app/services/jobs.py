@@ -73,6 +73,9 @@ class JobManager:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
+    def any_running(self) -> bool:
+        return any(job.status == "running" for job in self._jobs.values())
+
     def start(self, kind: str, body: Callable[[Job], Awaitable[Any]]) -> Job:
         job = Job(id=uuid.uuid4().hex, kind=kind)
         self._jobs[job.id] = job

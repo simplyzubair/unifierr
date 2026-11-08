@@ -20,6 +20,7 @@ import type {
   HealthOverview,
   EventItem,
   SystemSettings,
+  UpdateInfo,
   SystemSettingsUpdate,
   MediaType,
 } from '@/types/api';
@@ -388,6 +389,19 @@ export const systemApi = {
     apiClient<SystemSettings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+
+  getUpdate: () => apiClient<UpdateInfo>('/api/system/update', { method: 'GET' }),
+
+  checkUpdate: () => apiClient<UpdateInfo>('/api/system/update/check', { method: 'POST' }),
+
+  applyUpdate: () =>
+    apiClient<{ started: boolean; message: string }>('/api/system/update/apply', { method: 'POST' }),
+
+  setAutoUpdate: (auto_update: boolean) =>
+    apiClient<UpdateInfo>('/api/system/update/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ auto_update }),
     }),
 
   getBackup: () =>

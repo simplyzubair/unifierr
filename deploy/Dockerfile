@@ -24,7 +24,10 @@ FROM python:3.12-slim
 # without host-specific GID mapping, the container runs as root.
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1 \
+# Set by CI to the commit this image was built from; shown on the Updates page.
+ARG UNIFIERR_REVISION=dev
+ENV UNIFIERR_REVISION=$UNIFIERR_REVISION \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UNIFIERR_DATA_DIR=/config \
     UNIFIERR_DOCKER_HOST=unix:///var/run/docker.sock

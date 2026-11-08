@@ -289,6 +289,16 @@ def _route_item(item_id: str) -> tuple[ServiceKind, str]:
 async def downloads_action(db: AsyncSession, item_id: str, action: str, *, delete_files: bool = False) -> None:
     """Pause, resume, retry or remove one download in whichever client owns it."""
     kind, raw = _route_item(item_id)
+    svc = await get_service(db, kind)
+    if svc is None or not svc.enabled:
+        name = {"qbittorrent": "qBittorrent", "sabnzbd": "SABnzbd", "nzbget": "NZBGet"}[kind.value]
+        raise UnifierrError(
+            f"{name} is not connected to Unifierr yet",
+            explanation=f"Radarr or Sonarr is using {name} for this download, but Unifierr has not been given "
+                        f"{name}'s login, so it cannot pause or remove it from here.",
+            fix=f"Open Settings → Apps → add {name} with its web address and login. Downloads keep running meanwhile.",
+            status_code=409,
+        )
     async with adapter_for(db, kind) as client:
         if action == "pause":
             await client.pause([raw])

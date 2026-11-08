@@ -86,6 +86,9 @@ jobs:
         working-directory: client
       - run: npx tauri android init --ci
         working-directory: client
+      - name: Keep the app between the Android system bars
+        run: cp android/MainActivity.kt src-tauri/gen/android/app/src/main/java/com/unifierr/client/MainActivity.kt
+        working-directory: client
       - run: npx tauri android build --debug --apk --target aarch64
         working-directory: client
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

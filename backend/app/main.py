@@ -1,4 +1,5 @@
 """Unifierr FastAPI application: REST API under /api, built frontend at /."""
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,7 +25,13 @@ async def lifespan(_: FastAPI):
     from app.migrations import upgrade_db
 
     await run_in_threadpool(upgrade_db)
-    yield
+    from app.services.updater import auto_update_loop
+
+    updates = asyncio.create_task(auto_update_loop())
+    try:
+        yield
+    finally:
+        updates.cancel()
 
 
 def create_app() -> FastAPI:

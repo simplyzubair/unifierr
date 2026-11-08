@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # Docker socket. Empty string disables Docker features.
     docker_host: str = "unix:///var/run/docker.sock"
     log_level: str = "INFO"
+    # Self-update: how often to look for a newer image (seconds) when auto-update is on.
+    update_check_seconds: int = 900
+    # Optional login for a private registry (e.g. GHCR with a read:packages token). Public images need none.
+    registry_user: str | None = None
+    registry_token: str | None = None
+    # Where people get the desktop/Android apps; shown on the Updates page.
+    download_url: str = "https://unifierr.skillsgeek.com"
 
     @property
     def db_url(self) -> str:

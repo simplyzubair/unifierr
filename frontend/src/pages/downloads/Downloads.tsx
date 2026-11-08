@@ -30,6 +30,10 @@ export const Downloads: React.FC = () => {
   const [refreshIssue, setRefreshIssue] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
+  // Items that only appear in Radarr/Sonarr's own queue belong to a client Unifierr has no login for.
+  const isControllable = (item: QueueItem) => item.source !== 'radarr' && item.source !== 'sonarr';
+  const hasUncontrollable = items.some((item) => !isControllable(item));
+
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = useState<QueueItem | null>(null);
 
@@ -185,6 +189,13 @@ export const Downloads: React.FC = () => {
         </div>
       )}
 
+      {hasUncontrollable && (
+        <div role="note" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300">
+          Some downloads run in a download client that Unifierr is not connected to yet, so you can watch them here but
+          not pause or remove them. To control them, add the client under Settings → Apps. Nothing is wrong with the downloads.
+        </div>
+      )}
+
       {/* Downloads List */}
       {loading ? (
         <TableSkeleton rows={4} />
@@ -218,7 +229,7 @@ export const Downloads: React.FC = () => {
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <QueueStateBadge state={item.state} />
 
-                  {item.state === 'paused' ? (
+                  {isControllable(item) && (item.state === 'paused' ? (
                     <button
                       type="button"
                       onClick={() => handleResume(item.id)}
@@ -236,16 +247,18 @@ export const Downloads: React.FC = () => {
                     >
                       <Pause className="h-4 w-4" />
                     </button>
-                  )}
+                  ))}
 
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(item)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
-                    title="Remove Download"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {isControllable(item) && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(item)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                      title="Remove Download"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 

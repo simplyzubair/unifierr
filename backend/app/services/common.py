@@ -22,6 +22,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "pgid": 1000,
     "timezone": "UTC",
     "language": "en",
+    "auto_update": False,
     "media_server": None,  # jellyfin | plex
     "vpn_enabled": False,
     "vpn_provider": "",

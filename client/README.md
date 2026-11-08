@@ -56,8 +56,12 @@ Build an Android APK (debug signed for private testing):
 
 ```sh
 npx tauri android init --ci
+cp android/MainActivity.kt src-tauri/gen/android/app/src/main/java/com/unifierr/client/MainActivity.kt
 npm run build:android
 ```
+
+The `cp` step replaces the generated activity with one that keeps the page between the Android status bar and the
+back/home/recents bar. Skip it and the app draws under both bars.
 
 Build outputs are under `src-tauri/target/` for desktop and
 `src-tauri/gen/android/app/build/outputs/apk/` for Android. Windows and macOS

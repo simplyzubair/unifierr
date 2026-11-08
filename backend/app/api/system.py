@@ -21,6 +21,7 @@ from app.core.config import get_settings
 from app.core.db import get_db, reset_engine
 from app.core.security import require_admin
 from app.models import User
+from app.services import updater
 from app.services.common import MOVIES_PATH, TORRENTS_MOVIES, TV_PATH, get_all_settings, log_event, set_settings
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -218,3 +219,33 @@ async def restore(file: UploadFile, user: User = Depends(require_admin)):
 
     await run_in_threadpool(upgrade_db)
     return {"ok": True, "message": "Backup restored. Please sign in again."}
+
+
+# ---------------- updates ----------------
+
+class UpdateSettingsIn(BaseModel):
+    auto_update: bool
+
+
+@router.get("/system/update")
+async def update_status(db: AsyncSession = Depends(get_db)):
+    """Cheap: what is running now and what the last check found. Does not contact the registry."""
+    return await updater.status(db)
+
+
+@router.post("/system/update/check")
+async def update_check(db: AsyncSession = Depends(get_db)):
+    return await updater.status(db, refresh=True)
+
+
+@router.post("/system/update/apply", status_code=202)
+async def update_apply(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    return await updater.apply(db, user.username)
+
+
+@router.put("/system/update/settings")
+async def update_settings(body: UpdateSettingsIn, user: User = Depends(require_admin),
+                          db: AsyncSession = Depends(get_db)):
+    await set_settings(db, {"auto_update": body.auto_update})
+    await log_event(db, "update", f"{user.username} turned automatic updates {'on' if body.auto_update else 'off'}.")
+    return await updater.status(db)

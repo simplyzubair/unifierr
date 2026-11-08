@@ -3,7 +3,8 @@
 # recreate, rename, or reconfigure the existing media containers.
 services:
   unifierr:
-    image: unifierr:local
+    # Built-in updates need a registry image: an imported 'unifierr:local' file cannot update itself.
+    image: ${UNIFIERR_IMAGE:-ghcr.io/simplyzubair/unifierr:latest}
     container_name: unifierr
     restart: unless-stopped
     ports:

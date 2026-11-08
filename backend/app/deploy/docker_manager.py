@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -536,16 +537,51 @@ class DockerManager:
                 pass
         return None
 
+    def _user_env_and_labels(self, c: Any, env: list[str], labels: dict[str, str]) -> tuple[list[str], dict[str, str]]:
+        """Drop env vars and labels that the OLD image baked in, so the new image's own values apply
+        (otherwise a recreate would pin e.g. the old build revision)."""
+        try:
+            image_cfg = self.client.images.get(c.image.id).attrs["Config"]
+            baked_env = set(image_cfg.get("Env") or [])
+            baked_labels = dict(image_cfg.get("Labels") or {})
+        except Exception:  # noqa: BLE001 - keep everything rather than lose a setting
+            return env, labels
+        return ([e for e in env if e not in baked_env],
+                {k: v for k, v in labels.items() if baked_labels.get(k) != v})
+
+    @staticmethod
+    def _wait_healthy(c: Any, timeout: float) -> None:
+        """Raise unless the container is healthy (or, with no healthcheck, still running after 5 s)."""
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            c.reload()
+            state = c.attrs.get("State", {}) or {}
+            if state.get("Status") in ("exited", "dead"):
+                raise RuntimeError(f"it stopped right after starting (exit code {state.get('ExitCode')})")
+            health = (state.get("Health") or {}).get("Status")
+            if health == "healthy":
+                return
+            if health == "unhealthy":
+                raise RuntimeError("it reports unhealthy")
+            if health is None and state.get("Status") == "running" and time.monotonic() - start > 5:
+                return
+            time.sleep(2)
+        raise RuntimeError("it did not become healthy in time")
+
     def update(
         self,
         name: str,
         progress: Callable[[str], None] | None = None,
+        *,
+        pull: bool = True,
+        require_managed: bool = True,
+        healthy_timeout: float = 0.0,
     ) -> ContainerInfo:
-        """Pull newer image and recreate a managed container preserving all configurations.
+        """Recreate a container from its (newer) image, keeping the settings its owner chose.
 
-        Only allowed on managed containers.
-        Renames existing container to <name>-old until the new container is running,
-        then removes the old one. If starting the new container fails, rolls back.
+        Renames the old container to <name>-old until the new one runs, then removes it. If the new one
+        fails to start, or (when `healthy_timeout` > 0) does not become healthy in time, the old one is
+        restored. `require_managed=False` is only for Unifierr updating itself (services/updater.py).
         """
         if not self.available():
             raise UnifierrError("Docker is not available", explanation=self.error())
@@ -560,7 +596,7 @@ class DockerManager:
         if labels is None:
             labels = c.attrs.get("Config", {}).get("Labels", {}) or {}
 
-        if labels.get("io.unifierr.managed") != "true":
+        if require_managed and labels.get("io.unifierr.managed") != "true":
             raise UnifierrError(
                 f"Container '{name}' is not managed by Unifierr",
                 explanation="To avoid breaking your setup, Unifierr only updates containers it installed.",
@@ -574,7 +610,7 @@ class DockerManager:
         network_settings = attrs.get("NetworkSettings", {}) or {}
 
         image_name = config.get("Image", "")
-        env = config.get("Env", [])
+        env, labels = self._user_env_and_labels(c, config.get("Env") or [], labels)
         binds = host_config.get("Binds", [])
         port_bindings = host_config.get("PortBindings", {})
         restart_policy = host_config.get("RestartPolicy") or {"Name": "unless-stopped"}
@@ -587,10 +623,10 @@ class DockerManager:
         extra_nets = networks[1:]
 
         # 3. Pull newer image
-        if progress:
+        if progress and pull:
             progress(f"Checking for updates for {name} ({image_name})...")
         try:
-            for line in self.client.api.pull(image_name, stream=True, decode=True):
+            for line in self.client.api.pull(image_name, stream=True, decode=True) if pull else ():
                 if progress and isinstance(line, dict):
                     detail = line.get("progressDetail", {})
                     current = detail.get("current")
@@ -632,6 +668,14 @@ class DockerManager:
                 "labels": labels,
                 "cap_add": cap_add,
                 "devices": devices,
+                # shortcut: a custom command/entrypoint is not carried over (none of our containers set one).
+                "extra_hosts": host_config.get("ExtraHosts") or None,
+                "user": config.get("User") or None,
+                "dns": host_config.get("Dns") or None,
+                "group_add": host_config.get("GroupAdd") or None,
+                "security_opt": host_config.get("SecurityOpt") or None,
+                "privileged": bool(host_config.get("Privileged")),
+                "mem_limit": host_config.get("Memory") or None,
             }
             if network_mode and network_mode != "default":
                 create_options["network_mode"] = network_mode
@@ -643,6 +687,10 @@ class DockerManager:
                     with contextlib.suppress(Exception):  # noqa: BLE001
                         self.client.networks.get(extra_net).connect(new_c)
             new_c.start()
+            if healthy_timeout:
+                if progress:
+                    progress("Waiting for the new version to report healthy...")
+                self._wait_healthy(new_c, healthy_timeout)
         except Exception as exc:  # noqa: BLE001
             # ROLLBACK
             if progress:

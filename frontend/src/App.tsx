@@ -18,6 +18,7 @@ import { Indexers } from '@/pages/indexers/Indexers';
 import { Subtitles } from '@/pages/subtitles/Subtitles';
 import { Health } from '@/pages/health/Health';
 import { Settings } from '@/pages/settings/Settings';
+import { Updates } from '@/pages/updates/Updates';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -122,6 +123,14 @@ export const App: React.FC = () => {
                   element={
                     <ProtectedRoute adminOnly>
                       <Subtitles />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/updates"
+                  element={
+                    <ProtectedRoute adminOnly>
+                      <Updates />
                     </ProtectedRoute>
                   }
                 />

@@ -281,3 +281,69 @@ def test_restart_refuses_unmanaged_container() -> None:
     with pytest.raises(UnifierrError):
         DockerManager(client=mock_client).restart("someones-radarr")
     c.restart.assert_not_called()
+
+
+def _self_update_fixture(*, new_state: dict | None = None):
+    """A compose-made (unlabelled) Unifierr container whose old image baked in env + labels."""
+    client = MagicMock()
+    old_c = MagicMock()
+    old_c.labels = {"com.docker.compose.project": "unifierr", "org.opencontainers.image.revision": "OLD"}
+    old_c.image.id = "sha256:old"
+    old_c.attrs = {
+        "Config": {
+            "Image": "ghcr.io/simplyzubair/unifierr:latest",
+            "User": "",
+            "Env": ["PATH=/usr/bin", "UNIFIERR_REVISION=OLD", "TZ=Asia/Karachi", "UNIFIERR_ROOT=/data"],
+            "Labels": old_c.labels,
+        },
+        "HostConfig": {
+            "Binds": ["/volume1/unifierr/config:/config"],
+            "PortBindings": {"8484/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8484"}]},
+            "RestartPolicy": {"Name": "unless-stopped"},
+            "ExtraHosts": ["host.docker.internal:host-gateway"],
+        },
+        "NetworkSettings": {"Networks": {"media-stack": {}}},
+    }
+    def get(name):  # like Docker: no leftover "<name>-old" container exists
+        if name.endswith("-old"):
+            raise LookupError(name)
+        return old_c
+
+    client.containers.get.side_effect = get
+    client.images.get.return_value.attrs = {"Config": {
+        "Env": ["PATH=/usr/bin", "UNIFIERR_REVISION=OLD"], "Labels": {"org.opencontainers.image.revision": "OLD"}}}
+    new_c = MagicMock()
+    new_c.attrs = {"State": new_state or {"Status": "running", "Health": {"Status": "healthy"}}}
+    client.containers.create.return_value = new_c
+    return client, old_c, new_c
+
+
+def test_self_update_keeps_user_settings_but_not_old_images_baked_values() -> None:
+    client, old_c, new_c = _self_update_fixture()
+    DockerManager(client=client).update("unifierr", pull=False, require_managed=False, healthy_timeout=5)
+
+    kwargs = client.containers.create.call_args.kwargs
+    assert kwargs["extra_hosts"] == ["host.docker.internal:host-gateway"]  # Jellyfin lookup keeps working
+    assert kwargs["environment"] == ["TZ=Asia/Karachi", "UNIFIERR_ROOT=/data"]  # no pinned old revision/PATH
+    assert "org.opencontainers.image.revision" not in kwargs["labels"]
+    assert kwargs["labels"]["com.docker.compose.project"] == "unifierr"
+    client.api.pull.assert_not_called()
+    old_c.remove.assert_called_with(force=True)
+
+
+def test_self_update_rolls_back_when_new_version_is_unhealthy() -> None:
+    client, old_c, new_c = _self_update_fixture(new_state={"Status": "running", "Health": {"Status": "unhealthy"}})
+    with pytest.raises(UnifierrError) as err:
+        DockerManager(client=client).update("unifierr", pull=False, require_managed=False, healthy_timeout=5)
+    assert "rolled back" in err.value.message
+    new_c.remove.assert_called_with(force=True)
+    old_c.rename.assert_called_with("unifierr")  # the previous container gets its name back...
+    assert old_c.start.call_count == 1  # ...and is started again
+    old_c.remove.assert_not_called()
+
+
+def test_update_still_refuses_unlabelled_container_by_default() -> None:
+    client, old_c, _ = _self_update_fixture()
+    with pytest.raises(UnifierrError):
+        DockerManager(client=client).update("unifierr")
+    old_c.stop.assert_not_called()

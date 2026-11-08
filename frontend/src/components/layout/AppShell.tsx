@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
+import { systemApi } from '@/api';
 import {
   Compass,
   Inbox,
@@ -11,6 +12,7 @@ import {
   Search,
   Subtitles as SubtitlesIcon,
   Activity,
+  ArrowUpCircle,
   Settings as SettingsIcon,
   Sun,
   Moon,
@@ -36,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Indexers', path: '/indexers', icon: Search, adminOnly: true },
   { name: 'Subtitles', path: '/subtitles', icon: SubtitlesIcon, adminOnly: true },
   { name: 'Health', path: '/health', icon: Activity, adminOnly: true },
+  { name: 'Updates', path: '/updates', icon: ArrowUpCircle, adminOnly: true },
   { name: 'Settings', path: '/settings', icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -46,6 +49,16 @@ export const AppShell: React.FC = () => {
   const navigate = useNavigate();
 
   const filteredNavItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+
+  // A small dot on "Updates" when a newer version was found by the last check (never contacts the registry).
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => {
+    if (!isAdmin) return;
+    const look = () => systemApi.getUpdate().then((u) => setUpdateReady(!!u.available), () => undefined);
+    void look();
+    const timer = setInterval(look, 10 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [isAdmin]);
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
@@ -90,6 +103,9 @@ export const AppShell: React.FC = () => {
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 <span>{item.name}</span>
+                {item.path === '/updates' && updateReady && (
+                  <span className="ml-auto h-2 w-2 rounded-full bg-sky-500" role="img" aria-label="New version available" />
+                )}
               </NavLink>
             );
           })}
@@ -180,6 +196,9 @@ export const AppShell: React.FC = () => {
                 >
                   <Icon className="h-5 w-5" />
                   <span>{item.name}</span>
+                  {item.path === '/updates' && updateReady && (
+                    <span className="h-2 w-2 rounded-full bg-sky-500" role="img" aria-label="New version available" />
+                  )}
                 </NavLink>
               );
             })}

@@ -1,6 +1,7 @@
 services:
   unifierr:
-    image: ghcr.io/simplyzubair/unifierr:latest
+    # Put UNIFIERR_IMAGE=docker.io/<you>/unifierr:latest in .env to follow another registry.
+    image: ${UNIFIERR_IMAGE:-ghcr.io/simplyzubair/unifierr:latest}
     container_name: unifierr
     restart: unless-stopped
     ports:

@@ -353,3 +353,32 @@ export interface UnifierrApiError {
   explanation?: string | null;
   fix?: string | null;
 }
+
+export interface UpdateImageInfo {
+  id: string;
+  revision?: string | null;
+  created?: string | null;
+}
+
+export interface UpdateResult {
+  ok: boolean;
+  message: string;
+  at: string;
+}
+
+export interface UpdateInfo {
+  supported: boolean;
+  reason?: string;
+  image?: string;
+  version: string;
+  revision?: string | null;
+  current?: UpdateImageInfo;
+  latest?: UpdateImageInfo | null;
+  available?: boolean;
+  checked_at?: string | null;
+  error?: string | null;
+  auto_update: boolean;
+  check_every_seconds: number;
+  last_result?: UpdateResult | null;
+  download_url: string;
+}
