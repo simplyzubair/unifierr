@@ -19,14 +19,25 @@ Downloads and media live under one `data` folder on purpose. Then finished downl
 
 Compose binds port 8484 to `127.0.0.1` on the server by default. For access from another device, configure an HTTPS reverse proxy such as Tailscale Serve to forward to `http://127.0.0.1:8484`. Do not forward port 8484 from your router to the internet.
 
-## Verification status (November 8, 2026)
+## Verification status (November 9, 2026)
 
-- An existing Synology trial instance is responding: its health endpoint returned `{"status":"ok","version":"0.1.0"}`. This confirms that earlier image is running; the current checkout changes have **not** been deployed to that NAS.
-- The current checkout built as a Linux/amd64 image on Docker Desktop Engine 29.9.2. Its container reached `healthy`, `/api/health` returned `status: ok`, and the frontend root page loaded.
-- The production Compose file and source-build override parsed successfully. Installer path/health checks and the Compose environment-path test passed locally.
-- Anonymous access to `ghcr.io/simplyzubair/unifierr:latest` was denied, and no version tags were present. A public, versioned server image is not ready for a beginner pull install.
-- Unraid and TrueNAS instructions have not been smoke-tested on those devices. A successful YAML parse is not a substitute for testing their host permissions and Docker socket behavior.
-- The release workflow publishes the image only after a version tag is pushed; no image built from these worktree changes has been published.
+Tested on real Docker (a Linux server, Docker 29, isolated network and registry, compose file shaped like the Synology
+one) with Unifierr updating itself from a registry image:
+
+- **Update:** a newer image was found, swapped in by the helper container, reported healthy, and the old container
+  and helper were removed. Ports, folders, network, `extra_hosts`, environment and labels were identical to the
+  original container, and the admin account and other users were still there afterwards.
+- **Rollback:** a deliberately broken image was detected as unhealthy and the previous version came back by itself;
+  the failure was recorded and shown in plain words.
+- **Automatic updates:** with the switch on, a failed image was not retried, and a later good image was installed
+  within about a minute with no click.
+- **Synology:** the existing Unifierr container on the DS723+ was switched to the registry image name with its
+  database, key and compose file backed up first; the other containers were not touched.
+- **Not yet tested:** installing Radarr, Sonarr, Prowlarr, qBittorrent, Bazarr, Jellyfin or Plex *through Unifierr's
+  wizard on Docker* (they were tested earlier as already-running apps), Unraid, TrueNAS, and the Android layout on a
+  real phone.
+- The GHCR package is **private** until its owner makes it public or gives the server a read-only token (see
+  "Publishing a prebuilt image"); automatic updates cannot pull it until then.
 
 Treat the platform steps below as installation guidance, not proof of a completed release on every NAS.
 

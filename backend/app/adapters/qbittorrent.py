@@ -167,6 +167,15 @@ class QbittorrentAdapter(BaseAdapter):
     async def resume(self, hashes: list[str]) -> None:
         await self._pause_resume("start", "resume", hashes)
 
+    async def queue(self) -> list[QueueItem]:
+        """Same as torrents(): the Downloads view asks every download client for its queue() (SABnzbd, NZBGet
+        have it). Without this, qBittorrent's torrents were silently missing from that page."""
+        return await self.torrents()
+
+    async def retry(self, hashes: list[str]) -> None:
+        # shortcut: a torrent is "retried" by resuming it; use a forced recheck if that proves not enough.
+        await self.resume(hashes)
+
     async def delete(self, hashes: list[str], delete_files: bool = False) -> None:
         if not hashes:
             return
