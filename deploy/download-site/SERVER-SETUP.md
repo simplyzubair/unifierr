@@ -1,11 +1,9 @@
 # Download site deployment
 
-The domain's DNS currently points to the existing SkillsGeek VPS, which also serves `noterr.skillsgeek.com`. Install this site's files under a dedicated Nginx host root for `unifierr.skillsgeek.com`; do not replace the default root or another app's vhost.
-
-Expected layout:
+The `unifierr.skillsgeek.com` hostname uses a dedicated Nginx site on the SkillsGeek VPS. Its `current` symlink points to a versioned static release:
 
 ```text
-/var/www/unifierr/
+/var/www/unifierr/current -> /var/www/unifierr/releases/<release>/
   index.html
   downloads/
     SHA256SUMS.txt
@@ -15,6 +13,6 @@ Expected layout:
     unifierr-synology-server-preview-0.1.0.zip
 ```
 
-The TLS certificate is issued for `unifierr.skillsgeek.com` with Certbot after the dedicated Nginx host is enabled. Do not serve the preview through the default virtual host; the default host currently belongs to another site.
+Upload the next site and download files into a new release directory, verify the checksums, then atomically update `current`. The Nginx virtual host is included in [nginx.conf](nginx.conf); it redirects HTTP to HTTPS and serves static files only. The matching certificate is managed by Certbot.
 
-`index.html` is static and has no client-side script or external runtime dependencies. Recalculate `SHA256SUMS.txt` whenever any published download changes.
+Do not change the VPS default virtual host; it belongs to another site. `index.html` has no client-side script or external runtime dependencies. Recalculate `SHA256SUMS.txt` whenever a download changes.
