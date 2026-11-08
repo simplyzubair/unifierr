@@ -70,7 +70,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: 'false'
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: stable
@@ -108,15 +111,17 @@ jobs:
         run: |
           python - <<'PY'
           from hashlib import sha256
+          import os
           from pathlib import Path
           import shutil
 
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("client-v")
           root = Path("artifacts")
           output = Path("release-assets")
           output.mkdir()
           wanted = {
-              ".exe": "unifierr-windows-preview-0.1.0.exe",
-              ".dmg": "unifierr-macos-preview-0.1.0.dmg",
+              ".exe": f"unifierr-windows-preview-{version}.exe",
+              ".dmg": f"unifierr-macos-preview-{version}.dmg",
           }
           for suffix, name in wanted.items():
               matches = list(root.rglob(f"*{suffix}"))
@@ -130,7 +135,7 @@ jobs:
               apks = arm64
           if len(apks) != 1:
               raise SystemExit(f"Expected one Android APK (or one arm64 APK), found {len(apks)}")
-          shutil.copy2(apks[0], output / "unifierr-android-arm64-preview-0.1.0.apk")
+          shutil.copy2(apks[0], output / f"unifierr-android-arm64-preview-{version}.apk")
 
           entries = []
           for path in sorted(output.iterdir()):
@@ -143,8 +148,9 @@ jobs:
           PY
       - name: Publish prerelease assets
         run: |
+          version="${GITHUB_REF_NAME#client-v}"
           gh release create "$GITHUB_REF_NAME" release-assets/* \
-            --title "Unifierr client preview 0.1.0" \
+            --title "Unifierr client preview ${version}" \
             --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is an ARM64 debug APK. The server must already be running and reachable over HTTPS." \
             --prerelease
         env:
