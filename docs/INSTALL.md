@@ -86,9 +86,19 @@ docker compose --project-directory . -f deploy/docker-compose.yml -f deploy/dock
 
 ## Publishing a prebuilt image
 
-The release workflow builds `linux/amd64` and `linux/arm64` images and publishes version tags plus `latest` when a version tag such as `v0.1.0` is pushed. It first runs the same backend, frontend, Compose, image-build, and container smoke checks as CI.
+The release workflow builds the image and pushes it to GitHub Container Registry (GHCR). It first runs the same
+backend, frontend, Compose, image-build, and container smoke checks as CI.
 
-The first GitHub Container Registry package is private by default. Before asking users to install from GHCR, an owner must change its package visibility to public in GitHub's package settings. GitHub does not allow changing a public package back to private, so make that change only when the image is intended for public use. See [GitHub's package visibility documentation](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+- Pushing a version tag such as `v0.1.0` publishes that version plus `latest` for `linux/amd64` and `linux/arm64`.
+- Pushing to `main` or `feat/unifierr-mvp` publishes `latest` (and a `sha-<commit>` tag) for `linux/amd64` only, so
+  a server with automatic updates follows every push.
+
+The first GHCR package is private by default. Either make it public in GitHub's package settings (GitHub does not
+allow making a public package private again) or give the server a login that can read it: add
+`UNIFIERR_REGISTRY_USER` and `UNIFIERR_REGISTRY_TOKEN` (a personal access token with only `read:packages`) to the
+server's environment. To use another registry, set `UNIFIERR_IMAGE` in `.env`, for example
+`UNIFIERR_IMAGE=docker.io/<you>/unifierr:latest`.
+See [GitHub's package visibility documentation](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
 
 ## Plex
 
@@ -124,14 +134,31 @@ an app window; the device must be signed in to the same tailnet. Download jobs s
 completed media stays in its library. This preview is tied to this NAS and is not yet a general-purpose
 client for choosing different Unifierr servers.
 
-## Upgrading Unifierr
+## Updating Unifierr
+
+Open **Updates** in the menu. **Check for updates** looks for a newer image under the same tag Unifierr is running
+from; **Update now** installs it. Tick **Update automatically** and Unifierr checks every 15 minutes
+(`UNIFIERR_UPDATE_CHECK_SECONDS`) and installs a new version by itself.
+
+How it works: Unifierr pulls the newer image, then starts a short-lived helper container from it. The helper stops
+Unifierr, recreates it with the same settings (ports, folders, network, `extra_hosts`, environment), and waits until
+the new container reports healthy. If it does not, the old container is started again and the Updates page says so.
+An image that failed is not retried by automatic updates. Your database and settings live in `./config` and are
+never touched. Downloads keep running; only the Unifierr page is away for about a minute.
+
+Requirements: Unifierr must run from a registry image (not an imported `unifierr:local` file), and the Docker
+socket must be mounted. The Updates page explains what is missing. The phone, tablet and computer apps show the
+server's website, so they get new screens as soon as the server updates; a new app file is only needed when the
+app itself changes.
+
+To update by hand instead:
 
 ```bash
 cd ~/unifierr
 docker compose pull && docker compose up -d
 ```
 
-Database changes are applied automatically on start. Your settings stay in `./config`.
+Database changes are applied automatically on start.
 
 ## Upgrading the apps
 
