@@ -77,7 +77,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: stable
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android
       - name: Install Android SDK components
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125"
@@ -86,7 +86,7 @@ jobs:
         working-directory: client
       - run: npx tauri android init --ci
         working-directory: client
-      - run: npm run build:android
+      - run: npx tauri android build --debug --apk --target aarch64
         working-directory: client
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -135,7 +135,7 @@ jobs:
               apks = arm64
           if len(apks) != 1:
               raise SystemExit(f"Expected one Android APK (or one arm64 APK), found {len(apks)}")
-          shutil.copy2(apks[0], output / f"unifierr-android-preview-{version}.apk")
+          shutil.copy2(apks[0], output / f"unifierr-android-arm64-preview-{version}.apk")
 
           entries = []
           for path in sorted(output.iterdir()):
@@ -151,7 +151,7 @@ jobs:
           version="${GITHUB_REF_NAME#client-v}"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" release-assets/* \
             --title "Unifierr client preview ${version}" \
-            --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is a universal debug APK. The server must already be running and reachable over HTTPS." \
+            --notes "Preview builds for private testing. Windows and macOS packages are unsigned; Android is an ARM64 debug APK. The server must already be running and reachable over HTTPS." \
             --prerelease
         env:
           GH_TOKEN: ${{ github.token }}
