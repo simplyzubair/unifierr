@@ -326,6 +326,29 @@ async def _wire_trash(db: AsyncSession, job: Job) -> None:
     await apply_trash_profiles(db, job)
 
 
+async def _wire_converter(db: AsyncSession, job: Job) -> None:
+    """Point Unmanic at Radarr's movie folder so finished movies are shrunk to HEVC automatically."""
+    if await get_service(db, ServiceKind.unmanic) is None:
+        return
+    s = job.step("Set up automatic movie converter")
+    if await get_service(db, ServiceKind.radarr) is None:
+        job.skip(s, "Radarr is not connected, so there is no movie folder to watch yet.")
+        return
+    try:
+        async with adapter_for(db, ServiceKind.radarr) as radarr:
+            folders = [f["path"] for f in await radarr.root_folders() if f.get("path")]
+        if not folders:
+            job.skip(s, "Radarr has no movie folder yet.")
+            return
+        # Unmanic mounts the same /data as Radarr, so Radarr's path is valid inside Unmanic too.
+        folder = MOVIES_PATH if MOVIES_PATH in folders else folders[0]
+        async with adapter_for(db, ServiceKind.unmanic) as unmanic:
+            await unmanic.ensure_converter(folder)
+        job.ok(s, f"New movies in {folder} are converted to HEVC, one at a time, keeping their resolution.")
+    except Exception as exc:  # noqa: BLE001
+        job.fail(s, exc)
+
+
 async def run_wiring(job: Job) -> dict:
     async with sessionmaker()() as db:
         await _wire_arr_basics(db, job)
@@ -338,6 +361,7 @@ async def run_wiring(job: Job) -> dict:
             job.skip(s, "No Jellyfin or Plex connected. You can add one later.")
         await _wire_notifications(db, job)
         await _wire_trash(db, job)
+        await _wire_converter(db, job)
         failed = [s.name for s in job.steps if s.status == "failed"]
         if has_jf or has_plex:
             await set_settings(db, {"media_server": "jellyfin" if has_jf else "plex"})

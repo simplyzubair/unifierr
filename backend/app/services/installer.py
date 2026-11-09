@@ -29,7 +29,7 @@ log = logging.getLogger("unifierr.installer")
 # Install order matters: download clients and indexers before the apps that use them.
 INSTALL_ORDER = [ServiceKind.gluetun, ServiceKind.qbittorrent, ServiceKind.sabnzbd, ServiceKind.nzbget,
                  ServiceKind.prowlarr, ServiceKind.radarr, ServiceKind.sonarr, ServiceKind.bazarr,
-                 ServiceKind.jellyfin, ServiceKind.plex]
+                 ServiceKind.jellyfin, ServiceKind.plex, ServiceKind.unmanic]
 ARR_KINDS = {ServiceKind.radarr, ServiceKind.sonarr, ServiceKind.prowlarr}
 VPN_ROUTED_KINDS = {ServiceKind.qbittorrent, ServiceKind.prowlarr, ServiceKind.sabnzbd, ServiceKind.nzbget}
 DISPLAY = {k: k.value.capitalize() for k in ServiceKind} | {

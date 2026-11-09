@@ -46,6 +46,8 @@ def _match_kind(c: ContainerInfo) -> ServiceKind | None:
         return ServiceKind.sabnzbd
     if "nzbget" in img or "nzbget" in name:
         return ServiceKind.nzbget
+    if "unmanic" in img or "unmanic" in name:
+        return ServiceKind.unmanic
     if "bazarr" in img or "bazarr" in name:
         return ServiceKind.bazarr
     if "jellyfin" in img or "jellyfin" in name:

@@ -154,3 +154,20 @@ async def test_wiring_handles_multiple_arr_instances(client, fakes):
     assert len(qb_calls) == 2
     categories = {c[3]["category"] for c in qb_calls}
     assert len(categories) == 2  # per-instance categories must never collide
+
+
+async def test_converter_watches_radarrs_own_movie_folder(client, fakes):
+    EXISTING_FOLDERS["radarr"] = [{"id": 1, "path": "/data/Movies"}]  # an adopted NAS layout
+    await _connect_all([ServiceKind.radarr, ServiceKind.unmanic])
+    job = Job(id="t", kind="wire")
+    await run_wiring(job)
+    step = next(s for s in job.steps if s.name == "Set up automatic movie converter")
+    assert step.status == "ok", step.message
+    assert [c[2] for c in CALLS if c[1] == "ensure_converter"] == [("/data/Movies",)]
+
+
+async def test_no_converter_step_without_unmanic(client, fakes):
+    await _connect_all([ServiceKind.radarr])
+    job = Job(id="t", kind="wire")
+    await run_wiring(job)
+    assert not any(s.name == "Set up automatic movie converter" for s in job.steps)

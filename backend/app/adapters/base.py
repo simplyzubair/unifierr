@@ -29,6 +29,7 @@ class ServiceKind(StrEnum):
     jellyfin = "jellyfin"
     plex = "plex"
     gluetun = "gluetun"
+    unmanic = "unmanic"
 
 
 @dataclass(slots=True)

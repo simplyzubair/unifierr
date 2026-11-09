@@ -51,6 +51,7 @@ const ALL_APPS: Array<{ kind: ServiceKind; name: string; desc: string; defaultIn
   { kind: 'bazarr', name: 'Bazarr', desc: 'Finds missing subtitles in any language automatically.', defaultInstall: true },
   { kind: 'jellyfin', name: 'Jellyfin', desc: 'Free, private streaming server for your personal media.', defaultInstall: true },
   { kind: 'plex', name: 'Plex', desc: 'Popular streaming server with wide device support.', defaultInstall: false },
+  { kind: 'unmanic', name: 'Unmanic', desc: 'Shrinks finished movies so they play smoothly on slow internet. Keeps the resolution; uses a lot of CPU while converting.', defaultInstall: true },
 ];
 
 interface CustomAdoptEntry {

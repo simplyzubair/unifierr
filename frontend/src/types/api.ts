@@ -10,7 +10,8 @@ export type ServiceKind =
   | 'bazarr'
   | 'jellyfin'
   | 'plex'
-  | 'gluetun';
+  | 'gluetun'
+  | 'unmanic';
 
 export type Severity = 'info' | 'warning' | 'error';
 

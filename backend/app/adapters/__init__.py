@@ -13,6 +13,7 @@ from app.adapters.qbittorrent import QbittorrentAdapter
 from app.adapters.radarr import RadarrAdapter
 from app.adapters.sabnzbd import SabnzbdAdapter
 from app.adapters.sonarr import SonarrAdapter
+from app.adapters.unmanic import UnmanicAdapter
 from app.core.errors import UnifierrError
 
 ADAPTERS: dict[ServiceKind, type[BaseAdapter]] = {
@@ -25,6 +26,7 @@ ADAPTERS: dict[ServiceKind, type[BaseAdapter]] = {
     ServiceKind.bazarr: BazarrAdapter,
     ServiceKind.jellyfin: JellyfinAdapter,
     ServiceKind.plex: PlexAdapter,
+    ServiceKind.unmanic: UnmanicAdapter,
 }
 
 

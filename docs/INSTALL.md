@@ -145,6 +145,26 @@ an app window; the device must be signed in to the same tailnet. Download jobs s
 completed media stays in its library. This preview is tied to this NAS and is not yet a general-purpose
 client for choosing different Unifierr servers.
 
+## Automatic movie converter (Unmanic)
+
+Unifierr can install [Unmanic](https://github.com/Unmanic/unmanic) (open source, GPL-3) and set it up during
+"Connect everything". It watches Radarr's movie folder and re-encodes each new movie to **HEVC (H.265)**:
+
+- about half the size of the usual H.264 file at a similar picture quality, so it streams smoothly on slow internet
+  and takes less space;
+- the **resolution is never lowered** (4K stays 4K, 1080p stays 1080p), and files that are already HEVC are skipped;
+- one movie at a time (`libx265`, preset `fast`, CRF 23), audio and subtitles are copied unchanged;
+- the converted file replaces the original in place, so Radarr and Jellyfin keep working with it.
+
+Things to know:
+
+- **It uses a lot of CPU.** On a 2-4 core NAS without video hardware a 2-hour 1080p movie can take several hours.
+  Your library is converted gradually; new movies are queued as they arrive.
+- **The original is replaced.** Re-encoding is one-way; keep the original elsewhere if you need a perfect copy.
+- **Space is saved after seeding stops.** A torrent that is still seeding keeps its own full-size copy in the
+  downloads folder (the media copy was a hardlink). The space comes back when the torrent is removed.
+- Unmanic has no login of its own, so Unifierr never publishes its port; it is reached only on the Docker network.
+
 ## Updating Unifierr
 
 Open **Updates** in the menu. **Check for updates** looks for a newer image under the same tag Unifierr is running

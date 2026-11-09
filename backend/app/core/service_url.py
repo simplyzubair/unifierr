@@ -26,6 +26,7 @@ LOCAL_HOSTS = frozenset(
         "jellyfin",
         "plex",
         "gluetun",
+        "unmanic",
     }
 )
 TAILSCALE_NETWORKS = (

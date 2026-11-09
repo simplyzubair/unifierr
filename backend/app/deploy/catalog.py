@@ -211,6 +211,24 @@ env={
         healthcheck_path="/identity",
         description="Popular media server streaming movies, TV shows, and music to any device.",
     ),
+    ServiceKind.unmanic: AppSpec(
+        kind=ServiceKind.unmanic,
+        display_name="Unmanic",
+        image="josh5/unmanic:latest",  # Docker Hub: official image of the GPL-3 project
+        container_name="unmanic",
+        internal_port=8888,
+        default_host_port=8888,  # never published by default: Unmanic has no login of its own
+        volumes={
+            "{appdata}/unmanic": "/config",
+            # Unmanic's work folder for half-finished conversions, kept on disk instead of the image layer.
+            "{appdata}/unmanic/cache": "/tmp/unmanic",  # noqa: S108
+            "{root}/data": "/data",
+        },
+        env={"PUID": "{puid}", "PGID": "{pgid}", "TZ": "{tz}", "UMASK": "002"},
+        healthcheck_path="/unmanic/api/v2/version/read",
+        description="Shrinks finished movies to HEVC so they stream smoothly on slow internet, "
+                    "without lowering the resolution.",
+    ),
     ServiceKind.gluetun: AppSpec(
         kind=ServiceKind.gluetun,
         display_name="Gluetun VPN",

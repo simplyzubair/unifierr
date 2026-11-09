@@ -179,7 +179,7 @@ describe('SetupWizard navigation', () => {
       base_url: 'http://radarr:7878',
     }));
     await waitFor(() => expect(setupApi.install).toHaveBeenCalledWith([
-      'sonarr', 'prowlarr', 'qbittorrent', 'bazarr', 'jellyfin',
+      'sonarr', 'prowlarr', 'qbittorrent', 'bazarr', 'jellyfin', 'unmanic',
     ]));
     await waitFor(() => expect(setupApi.wire).toHaveBeenCalledOnce());
   });

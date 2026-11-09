@@ -16,6 +16,7 @@ def test_catalog_contains_all_services() -> None:
         ServiceKind.jellyfin,
         ServiceKind.plex,
         ServiceKind.gluetun,
+        ServiceKind.unmanic,
     }
     assert set(CATALOG.keys()) == expected_kinds
 
@@ -28,7 +29,8 @@ def test_catalog_contains_all_services() -> None:
             assert spec.devices == ["/dev/net/tun:/dev/net/tun"]
             assert spec.published_ports == {"6881/tcp": 6881, "6881/udp": 6881}
             continue
-        assert spec.image.startswith("lscr.io/linuxserver/")
+        # Unmanic has no linuxserver image; its own author publishes it on Docker Hub.
+        assert spec.image.startswith("lscr.io/linuxserver/") or spec.image == "josh5/unmanic:latest"
         assert "{root}/data" in spec.volumes
         assert spec.volumes["{root}/data"] == "/data"
         assert f"{{appdata}}/{kind.value}" in spec.volumes
