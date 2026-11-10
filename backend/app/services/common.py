@@ -32,6 +32,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "download_client": None,  # qbittorrent | sabnzbd | nzbget (picked in the wizard)
     "trash_profiles": False,  # opt-in: apply TRaSH-Guides quality profiles + custom formats
     "trash_profile": None,  # optional override of the default TRaSH profile name
+    "cleanup_snoozed_until": {},
 }
 
 # Paths as seen INSIDE the managed containers (all mount <root>/data at /data).

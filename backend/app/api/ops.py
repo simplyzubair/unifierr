@@ -11,8 +11,8 @@ from app.adapters.base import ServiceKind
 from app.core.db import get_db
 from app.core.errors import UnifierrError
 from app.core.security import require_admin
-from app.models import Event
-from app.services import health, media
+from app.models import Event, User
+from app.services import cleanup, health, media
 from app.services.common import adapter_for, get_setting, log_event
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -58,6 +58,22 @@ class IndexerIn(BaseModel):
 
 class IndexerPatch(BaseModel):
     enabled: bool
+
+
+class CleanupAnswer(BaseModel):
+    delete: bool
+
+
+@router.get("/media/cleanup")
+async def cleanup_due(db: AsyncSession = Depends(get_db)):
+    return await cleanup.due_movies(db)
+
+
+@router.post("/media/cleanup/{external_id}")
+async def answer_cleanup(external_id: int, body: CleanupAnswer,
+                         admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    await cleanup.answer(db, external_id, body.delete, admin.username)
+    return {"ok": True}
 
 
 @router.get("/indexers")
