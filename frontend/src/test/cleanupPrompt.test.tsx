@@ -19,3 +19,14 @@ describe('CleanupPrompt', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
+
+describe('CleanupPrompt when the check fails', () => {
+  it('stays quiet instead of showing an error popup', async () => {
+    const { mediaApi } = await import('@/api');
+    vi.mocked(mediaApi.getCleanupDue).mockRejectedValueOnce(new Error('Radarr is restarting'));
+    const { container } = render(<CleanupPrompt />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText('Delete this movie?')).toBeNull();
+    expect(container.textContent).not.toContain('Radarr is restarting');
+  });
+});

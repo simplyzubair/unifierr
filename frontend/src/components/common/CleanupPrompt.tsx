@@ -14,7 +14,8 @@ export const CleanupPrompt: React.FC = () => {
     try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch { return false; }
   });
   const load = useCallback(() => {
-    void mediaApi.getCleanupDue().then((items) => { setMovies(items); setError(null); }).catch((err: Error) => setError(err));
+    // A failed check (e.g. Radarr or Jellyfin restarting) stays silent: this reminder is never worth an error popup.
+    void mediaApi.getCleanupDue().then((items) => { setMovies(items); setError(null); }).catch(() => setMovies([]));
   }, []);
   useEffect(load, [load]);
   const close = () => {
@@ -36,8 +37,8 @@ export const CleanupPrompt: React.FC = () => {
     }
   };
   return (
-    <Modal isOpen={!dismissed && (!!movie || !!error)} onClose={close} title="Delete this movie?" maxWidth="md">
-      {error && <ErrorCard error={error} onRetry={load} />}
+    <Modal isOpen={!dismissed && !!movie} onClose={close} title="Delete this movie?" maxWidth="md">
+      {error && <ErrorCard error={error} />}
       {movie && (
         <div className="space-y-4">
           {movie.poster_url && <img src={movie.poster_url} alt={`${movie.title} poster`} className="mx-auto max-h-56 rounded-lg object-contain" />}
