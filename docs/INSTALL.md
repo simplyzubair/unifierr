@@ -153,14 +153,24 @@ Unifierr can install [Unmanic](https://github.com/Unmanic/unmanic) (open source,
 - about half the size of the usual H.264 file at a similar picture quality, so it streams smoothly on slow internet
   and takes less space;
 - the **resolution is never lowered** (4K stays 4K, 1080p stays 1080p), and files that are already HEVC are skipped;
-- one movie at a time (`libx265`, preset `fast`, CRF 23), audio and subtitles are copied unchanged;
-- the converted file replaces the original in place, so Radarr and Jellyfin keep working with it.
+- one movie at a time (`libx265`, preset `fast`, CRF 23), audio and subtitles copied unchanged.
+
+It is careful and works on its own:
+
+- **Skips files that would not get smaller:** anything already HEVC, AV1 or VP9, and H.264 files whose bitrate is
+  already low for their resolution (720p ≤ 2 Mbit/s, 1080p ≤ 4 Mbit/s, 4K ≤ 12 Mbit/s).
+- **Converts a copy, never the original.** The original stays in place and keeps playing the whole time.
+- **Checks the copy before using it:** it must open, keep the resolution and length, keep every audio and subtitle
+  track, play cleanly at the start, middle and end, and be smaller. If any check fails, the original is kept as it
+  was and that movie is never tried again.
+- **Waits while someone is watching.** The original is only replaced once nobody is playing it in Jellyfin.
+  (With Plex this check is not available yet.)
 
 Things to know:
 
 - **It uses a lot of CPU.** On a 2-4 core NAS without video hardware a 2-hour 1080p movie can take several hours.
   Your library is converted gradually; new movies are queued as they arrive.
-- **The original is replaced.** Re-encoding is one-way; keep the original elsewhere if you need a perfect copy.
+- **After a successful check the original is replaced.** Re-encoding is one-way; keep a copy elsewhere if you need the untouched original.
 - **Space is saved after seeding stops.** A torrent that is still seeding keeps its own full-size copy in the
   downloads folder (the media copy was a hardlink). The space comes back when the torrent is removed.
 - Unmanic has no login of its own, so Unifierr never publishes its port; it is reached only on the Docker network.

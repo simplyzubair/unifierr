@@ -47,4 +47,6 @@ select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "BLE"]
 ignore = ["B008", "S101"]
 
 [tool.ruff.lint.per-file-ignores]
+# Runs inside Unmanic: fixed ffprobe/ffmpeg binaries, argument lists, no shell.
+"app/adapters/unmanic_verify_plugin.py" = ["S603", "S607", "S310"]
 "tests/**" = ["S105", "S106", "S108", "BLE001"]

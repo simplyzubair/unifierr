@@ -163,7 +163,7 @@ async def test_converter_watches_radarrs_own_movie_folder(client, fakes):
     await run_wiring(job)
     step = next(s for s in job.steps if s.name == "Set up automatic movie converter")
     assert step.status == "ok", step.message
-    assert [c[2] for c in CALLS if c[1] == "ensure_converter"] == [("/data/Movies",)]
+    assert [c[2] for c in CALLS if c[1] == "ensure_converter"] == [("/data/Movies", None)]  # no Jellyfin here
 
 
 async def test_no_converter_step_without_unmanic(client, fakes):

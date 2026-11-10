@@ -342,8 +342,12 @@ async def _wire_converter(db: AsyncSession, job: Job) -> None:
             return
         # Unmanic mounts the same /data as Radarr, so Radarr's path is valid inside Unmanic too.
         folder = MOVIES_PATH if MOVIES_PATH in folders else folders[0]
+        # shortcut: only Jellyfin playback is detected; with Plex a movie can be replaced while it plays.
+        jellyfin = await get_service(db, ServiceKind.jellyfin)
+        watch = ((jellyfin.internal_url or jellyfin.base_url, decrypt(jellyfin.api_key_enc))
+                 if jellyfin and jellyfin.enabled and jellyfin.api_key_enc else None)
         async with adapter_for(db, ServiceKind.unmanic) as unmanic:
-            await unmanic.ensure_converter(folder)
+            await unmanic.ensure_converter(folder, watch)
         job.ok(s, f"New movies in {folder} are converted to HEVC, one at a time, keeping their resolution.")
     except Exception as exc:  # noqa: BLE001
         job.fail(s, exc)
