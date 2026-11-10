@@ -23,6 +23,7 @@ def movie_item(d: dict[str, Any]) -> MediaItem:
         in_library=mid > 0,
         monitored=bool(d.get("monitored", False)),
         has_file=bool(d.get("hasFile", False)),
+        file_added_at=(d.get("movieFile") or {}).get("dateAdded"),
         size_on_disk=d.get("sizeOnDisk") or None,
         status=d.get("status") or None,
     )

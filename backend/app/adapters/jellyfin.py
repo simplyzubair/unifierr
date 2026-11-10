@@ -101,6 +101,22 @@ class JellyfinAdapter(BaseAdapter):
                 fix="Make sure the Jellyfin account is an administrator, then try again.")
         return str(max(mine, key=lambda k: str(k.get("DateCreated", "")))["AccessToken"])
 
+    async def played_movie_tmdb_ids(self) -> set[int]:
+        users = parse_json(await self._api("GET", "/Users"), self.display_name)
+        played: set[int] = set()
+        for user in users or []:
+            items = parse_json(await self._api("GET", "/Items", params={
+                "userId": user["Id"], "Recursive": "true", "IncludeItemTypes": "Movie",
+                "Filters": "IsPlayed", "Fields": "ProviderIds",
+            }), self.display_name)
+            for item in (items or {}).get("Items", []):
+                value = (item.get("ProviderIds") or {}).get("Tmdb")
+                try:
+                    played.add(int(value))
+                except (TypeError, ValueError):
+                    continue
+        return played
+
     # ---- libraries ----
     @staticmethod
     def _lib(d: dict[str, Any]) -> LibraryInfo:

@@ -49,6 +49,15 @@ export interface MediaItem {
   size_on_disk?: number | null;
   status?: string | null;
 }
+export interface CleanupMovie {
+  external_id: number;
+  tmdb_id: number;
+  title: string;
+  year?: number | null;
+  poster_url?: string | null;
+  downloaded_at: string;
+  days_since_download: number;
+}
 
 export type QueueState =
   | 'downloading'

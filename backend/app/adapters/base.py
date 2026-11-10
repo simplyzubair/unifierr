@@ -78,6 +78,7 @@ class MediaItem(BaseModel):
     in_library: bool = False  # already added to Radarr/Sonarr
     monitored: bool = False
     has_file: bool = False  # movie: file present; series: any episode file present
+    file_added_at: str | None = None
     percent_complete: float | None = None  # series: episodeFileCount / episodeCount * 100
     size_on_disk: int | None = None
     status: str | None = None  # e.g. "released", "continuing", "ended"

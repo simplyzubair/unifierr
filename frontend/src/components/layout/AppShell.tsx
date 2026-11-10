@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
+import { CleanupPrompt } from '@/components/common/CleanupPrompt';
 import { systemApi } from '@/api';
 import {
   Compass,
@@ -221,6 +222,7 @@ export const AppShell: React.FC = () => {
             <Outlet />
           </div>
         </main>
+        {isAdmin && <CleanupPrompt />}
 
         {/* Mobile Bottom Navigation for Quick Access */}
         <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md py-2 px-1 z-20">

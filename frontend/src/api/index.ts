@@ -23,6 +23,7 @@ import type {
   UpdateInfo,
   SystemSettingsUpdate,
   MediaType,
+  CleanupMovie,
 } from '@/types/api';
 
 export * from './client';
@@ -200,6 +201,10 @@ export const servicesApi = {
 // ---------------- MEDIA & REQUESTS ----------------
 
 export const mediaApi = {
+  getCleanupDue: () => apiClient<CleanupMovie[]>('/api/media/cleanup', { method: 'GET' }),
+  answerCleanup: (id: number, del: boolean) => apiClient<{ ok: boolean }>(`/api/media/cleanup/${id}`, {
+    method: 'POST', body: JSON.stringify({ delete: del }),
+  }),
   search: (q: string, type: 'movie' | 'series' | 'all' = 'all') =>
     apiClient<MediaResult[]>('/api/media/search', {
       method: 'GET',
