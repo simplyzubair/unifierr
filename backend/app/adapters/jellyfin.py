@@ -136,6 +136,12 @@ class JellyfinAdapter(BaseAdapter):
                 return self._lib(d)
         return LibraryInfo(id=name, name=name, type=collection_type, paths=paths)
 
+    async def playing_file_names(self) -> set[str]:
+        """Base names of the files anyone is streaming right now."""
+        sessions = parse_json(await self._api("GET", "/Sessions"), self.display_name) or []
+        paths = [(s.get("NowPlayingItem") or {}).get("Path") for s in sessions if isinstance(s, dict)]
+        return {p.replace("\\", "/").rsplit("/", 1)[-1] for p in paths if p}
+
     async def refresh_library(self) -> None:
         await self._api("POST", "/Library/Refresh")
 

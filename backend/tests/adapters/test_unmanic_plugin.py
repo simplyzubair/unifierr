@@ -68,31 +68,28 @@ def test_watched_for_a_whole_day_keeps_original_without_blacklisting(monkeypatch
     assert plugin._failed() == {}  # retried on a later scan
 
 
-def test_being_played_matches_by_file_name(monkeypatch):
+def test_being_played_asks_unifierr_with_the_token(monkeypatch):
+    import io
+
     with open(plugin.CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump({"jellyfin_url": "http://jf:8096", "jellyfin_api_key": "K"}, f)
+        json.dump({"unifierr_url": "http://unifierr:8484", "token": "T"}, f)
+    seen = {}
 
-    class Resp:
-        def __init__(self, payload):
-            self.payload = payload
-
+    class Resp(io.BytesIO):
         def __enter__(self):
-            import io
-            return io.BytesIO(json.dumps(self.payload).encode())
+            return self
 
         def __exit__(self, *a):
             return False
 
-    seen = {}
-
     def urlopen(req, timeout):
-        seen["auth"] = req.headers.get("Authorization")
-        return Resp([{"NowPlayingItem": {"Path": "/media/Movies/Film (2020)/Film (2020).mkv"}}, {}])
+        seen["url"], seen["token"] = req.full_url, req.headers.get("X-unifierr-token")
+        return Resp(json.dumps({"playing": True}).encode())
 
     monkeypatch.setattr(plugin.urllib.request, "urlopen", urlopen)
     assert plugin.being_played("/data/Movies/Film (2020)/Film (2020).mkv") is True
-    assert plugin.being_played("/data/Movies/Other/Other.mkv") is False
-    assert seen["auth"] == 'MediaBrowser Token="K"'
+    assert seen["url"] == "http://unifierr:8484/api/converter/playing?name=Film+%282020%29.mkv"
+    assert seen["token"] == "T"
 
 
 def test_no_jellyfin_configured_means_not_playing():

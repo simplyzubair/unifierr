@@ -133,7 +133,8 @@ def test_every_api_route_requires_sign_in_unless_public():
     from app.main import create_app
 
     public = {"/api/health", "/api/setup/status", "/api/auth/bootstrap", "/api/auth/login", "/api/auth/logout",
-              "/api/docs", "/api/docs/oauth2-redirect", "/api/openapi.json", "/api/{path:path}"}
+              "/api/docs", "/api/docs/oauth2-redirect", "/api/openapi.json", "/api/{path:path}",
+              "/api/converter/playing"}  # protected by its own token (see tests/test_converter.py)
 
     def calls(dependant):
         for sub in dependant.dependencies:

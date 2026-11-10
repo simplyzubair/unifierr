@@ -79,7 +79,7 @@ async def test_safety_check_uploaded_with_jellyfin_details_and_ordered_around_th
 
     r = routes(mock, installed=True, groups=[{"id": 1}])
     async with UnmanicAdapter(Connection(ServiceKind.unmanic, "http://unmanic:8888")) as a:
-        await a.ensure_converter("/data/Movies", ("http://jellyfin:8096", "JKEY"))
+        await a.ensure_converter("/data/Movies", ("http://unifierr:8484", "TOKEN"))
 
     from email.parser import BytesParser
 
@@ -88,7 +88,8 @@ async def test_safety_check_uploaded_with_jellyfin_details_and_ordered_around_th
                                    + upload.content)
     z = zipfile.ZipFile(io.BytesIO(msg.get_payload()[0].get_payload(decode=True)))
     assert {"info.json", "plugin.py", "unifierr.json"} <= set(z.namelist())  # files at the zip root
-    assert json.loads(z.read("unifierr.json")) == {"jellyfin_url": "http://jellyfin:8096", "jellyfin_api_key": "JKEY"}
+    # Only Unifierr's address and the narrow token: no media-server key is ever handed to Unmanic.
+    assert json.loads(z.read("unifierr.json")) == {"unifierr_url": "http://unifierr:8484", "token": "TOKEN"}
     saves = [json.loads(c.request.content) for c in r["flow_save"].calls]
     order = {s["plugin_type"]: [p["plugin_id"] for p in s["plugin_flow"]] for s in saves}
     assert order["library_management.file_test"] == ["unifierr_verify", "video_transcoder"]

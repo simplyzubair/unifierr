@@ -326,6 +326,19 @@ async def _wire_trash(db: AsyncSession, job: Job) -> None:
     await apply_trash_profiles(db, job)
 
 
+async def _unifierr_url() -> str:
+    """How other containers reach this Unifierr: its container name on the shared Docker network."""
+    from starlette.concurrency import run_in_threadpool
+
+    from app.services.installer import docker_manager
+
+    try:
+        me = await run_in_threadpool(docker_manager().self_container)
+    except Exception:  # noqa: BLE001 - Docker unavailable: use the standard name
+        me = None
+    return f"http://{me.name if me else 'unifierr'}:8484"
+
+
 async def _wire_converter(db: AsyncSession, job: Job) -> None:
     """Point Unmanic at Radarr's movie folder so finished movies are shrunk to HEVC automatically."""
     if await get_service(db, ServiceKind.unmanic) is None:
@@ -343,9 +356,9 @@ async def _wire_converter(db: AsyncSession, job: Job) -> None:
         # Unmanic mounts the same /data as Radarr, so Radarr's path is valid inside Unmanic too.
         folder = MOVIES_PATH if MOVIES_PATH in folders else folders[0]
         # shortcut: only Jellyfin playback is detected; with Plex a movie can be replaced while it plays.
-        jellyfin = await get_service(db, ServiceKind.jellyfin)
-        watch = ((jellyfin.internal_url or jellyfin.base_url, decrypt(jellyfin.api_key_enc))
-                 if jellyfin and jellyfin.enabled and jellyfin.api_key_enc else None)
+        from app.api.converter import converter_token
+
+        watch = (await _unifierr_url(), await converter_token(db))
         async with adapter_for(db, ServiceKind.unmanic) as unmanic:
             await unmanic.ensure_converter(folder, watch)
         job.ok(s, f"New movies in {folder} are converted to HEVC, one at a time, keeping their resolution.")

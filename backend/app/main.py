@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app import __version__
-from app.api import auth, media, ops, services, setup, system
+from app.api import auth, converter, media, ops, services, setup, system
 from app.core.config import get_settings
 from app.core.errors import UnifierrError
 from app.core.logging import setup_logging
@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"detail": f"Invalid value for '{field}': {first.get('msg', 'invalid')}"},
                             status_code=422)
 
-    for module in (auth, setup, services, media, ops, system):
+    for module in (auth, setup, services, media, ops, system, converter):
         app.include_router(module.router, prefix="/api")
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],

@@ -29,10 +29,11 @@ TRANSCODE = {
 }
 
 
-def check_plugin_files(jellyfin: tuple[str, str] | None) -> tuple[str, dict[str, str]]:
-    """(version, zip contents). The version changes whenever the code or the Jellyfin details change,
-    so Unifierr re-uploads exactly when needed."""
-    config = json.dumps({"jellyfin_url": jellyfin[0], "jellyfin_api_key": jellyfin[1]} if jellyfin else {})
+def check_plugin_files(playing_check: tuple[str, str] | None) -> tuple[str, dict[str, str]]:
+    """(version, zip contents). `playing_check` = (Unifierr URL, converter token): the plugin asks Unifierr
+    whether a movie is being watched; it never receives a Jellyfin key. The version changes whenever the code or
+    these details change, so Unifierr re-uploads exactly when needed."""
+    config = json.dumps({"unifierr_url": playing_check[0], "token": playing_check[1]} if playing_check else {})
     version = "1.0.0-" + hashlib.sha256((CHECK_SOURCE + config).encode()).hexdigest()[:8]
     info = {
         "id": CHECK, "name": "Unifierr safety check", "author": "Unifierr", "version": version,
@@ -72,16 +73,16 @@ class UnmanicAdapter(BaseAdapter):
             return failed_status(exc, "unmanic")
         return HealthStatus(ok=True, version=data.get("version"), message="Connected")
 
-    async def ensure_converter(self, library_path: str, jellyfin: tuple[str, str] | None = None) -> None:
+    async def ensure_converter(self, library_path: str, playing_check: tuple[str, str] | None = None) -> None:
         """Idempotent: one library on `library_path` that watches for new files and converts with TRANSCODE,
-        one worker (one movie at a time). `jellyfin` = (url, api key) lets the safety check wait until nobody is
-        watching a movie before replacing it."""
+        one worker (one movie at a time). `playing_check` lets the safety check wait until nobody is watching a
+        movie before replacing it."""
         installed = {p.get("plugin_id"): p for p in
                      (await self._json("POST", "/plugins/installed", {"length": 100})).get("results", [])}
         if PLUGIN not in installed:
             await self._json("POST", "/plugins/repos/reload", {})
             await self._json("POST", "/plugins/install", {"plugin_id": PLUGIN})
-        version, files = check_plugin_files(jellyfin)
+        version, files = check_plugin_files(playing_check)
         if installed.get(CHECK, {}).get("version") != version:
             resp = await self._request("POST", "/unmanic/api/v2/upload/plugin/file",
                                        files={"fileName": (f"{CHECK}.zip", zipped(files), "application/zip")})

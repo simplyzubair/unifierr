@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import time
+import urllib.parse
 import urllib.request
 
 logger = logging.getLogger("Unmanic.Plugin.unifierr_verify")
@@ -18,7 +19,8 @@ logger = logging.getLogger("Unmanic.Plugin.unifierr_verify")
 FAILED_LIST = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                            "userdata", "unifierr_verify", "failed.json")
 SAMPLE_SECONDS = 10
-# Written by Unifierr next to this file: {"jellyfin_url": ..., "jellyfin_api_key": ...}
+# Written by Unifierr next to this file: {"unifierr_url": ..., "token": ...}. The token can only ask
+# Unifierr "is this file being watched?"; no media-server key is ever stored here.
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unifierr.json")
 PLAYING_RECHECK_SECONDS = 60
 MAX_PLAYING_WAIT_SECONDS = 24 * 3600
@@ -33,22 +35,20 @@ def _config() -> dict:
 
 
 def being_played(path: str) -> bool:
-    """True while anyone streams this movie in Jellyfin. Matched by file name, because Jellyfin and Unmanic mount
-    the media folder at different paths. If Jellyfin cannot be asked, nobody can be watching through it."""
+    """True while anyone streams this movie. Unifierr asks Jellyfin and matches by file name, because Jellyfin and
+    Unmanic mount the media folder at different paths. If Unifierr cannot be asked, assume nobody is watching."""
     cfg = _config()
-    url, key = cfg.get("jellyfin_url"), cfg.get("jellyfin_api_key")
-    if not url or not key:
+    url, token = cfg.get("unifierr_url"), cfg.get("token")
+    if not url or not token:
         return False
-    request = urllib.request.Request(url.rstrip("/") + "/Sessions",
-                                     headers={"Authorization": f'MediaBrowser Token="{key}"'})
+    query = urllib.parse.urlencode({"name": os.path.basename(path)})
+    request = urllib.request.Request(f"{url.rstrip('/')}/api/converter/playing?{query}",
+                                     headers={"X-Unifierr-Token": token})
     try:
         with urllib.request.urlopen(request, timeout=15) as resp:
-            sessions = json.load(resp)
+            return bool(json.load(resp).get("playing"))
     except (OSError, ValueError):
         return False
-    name = os.path.basename(path)
-    return any(os.path.basename((s.get("NowPlayingItem") or {}).get("Path") or "") == name
-               for s in sessions if isinstance(s, dict))
 
 
 def _failed() -> dict:
