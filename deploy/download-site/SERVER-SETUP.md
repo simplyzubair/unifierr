@@ -7,9 +7,9 @@ The `unifierr.skillsgeek.com` hostname uses a dedicated Nginx site on the Skills
   index.html
   downloads/
     SHA256SUMS.txt
-    unifierr-windows-preview-0.1.3.exe
-    unifierr-macos-preview-0.1.3.dmg
-    unifierr-android-arm64-preview-0.1.3.apk
+    unifierr-windows-preview-0.1.7.exe
+    unifierr-macos-preview-0.1.7.dmg
+    unifierr-android-arm64-preview-0.1.7.apk
     unifierr-synology-server-preview-0.1.0.zip
 ```
 
