@@ -25,13 +25,16 @@ async def lifespan(_: FastAPI):
     from app.migrations import upgrade_db
 
     await run_in_threadpool(upgrade_db)
+    from app.services.notify import notify_loop
     from app.services.updater import auto_update_loop
 
     updates = asyncio.create_task(auto_update_loop())
+    alerts = asyncio.create_task(notify_loop())
     try:
         yield
     finally:
         updates.cancel()
+        alerts.cancel()
 
 
 def create_app() -> FastAPI:

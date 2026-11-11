@@ -136,3 +136,18 @@ async def test_cleanup_routes_require_admin(client):
     await client.post("/api/auth/login", json={"username": "kid", "password": "kid-password-1"}, headers=CSRF)
     assert (await client.get("/api/media/cleanup")).status_code == 403
     assert (await client.post("/api/media/cleanup/7", json={"delete": False}, headers=CSRF)).status_code == 403
+
+
+@pytest.mark.parametrize("setting,days,expected", [(30, 31, True), (30, 29, False), (0, 400, False)])
+async def test_admin_chooses_the_wait_or_never(client, fake_cleanup, setting, days, expected):
+    await make_admin(client)
+    await setup_services()
+    r = await client.put("/api/settings", json={"cleanup_review_days": setting}, headers=CSRF)
+    assert r.status_code == 200 and r.json()["cleanup_review_days"] == setting
+    FakeRadarr.movies, FakeJellyfin.watched = [movie(days)], {42}
+    assert bool((await client.get("/api/media/cleanup")).json()) is expected
+
+
+async def test_wait_must_be_one_of_the_offered_choices(client):
+    await make_admin(client)
+    assert (await client.put("/api/settings", json={"cleanup_review_days": 7}, headers=CSRF)).status_code == 422

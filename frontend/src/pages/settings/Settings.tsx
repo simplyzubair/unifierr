@@ -73,6 +73,8 @@ export const Settings: React.FC = () => {
     vpn_server_countries: '',
     download_client: 'qbittorrent' as 'qbittorrent' | 'sabnzbd' | 'nzbget',
     trash_profiles: false,
+    cleanup_review_days: 90 as 0 | 30 | 90 | 180,
+    ntfy_url: '',
   });
   const [networkSecrets, setNetworkSecrets] = useState({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
 const [networkSaving, setNetworkSaving] = useState(false);
@@ -116,6 +118,8 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
         vpn_server_countries: settings.vpn_server_countries ?? '',
         download_client: settings.download_client ?? 'qbittorrent',
         trash_profiles: settings.trash_profiles ?? false,
+        cleanup_review_days: settings.cleanup_review_days ?? 90,
+        ntfy_url: settings.ntfy_url ?? '',
       });
     } catch (err: unknown) {
       setError(err as Error);
@@ -137,7 +141,7 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
       });
       setNetworkSettings(settings);
       setNetworkSecrets({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
-      setSuccessMsg('Network settings saved. VPN credentials are stored encrypted.');
+      setSuccessMsg('Settings saved. Passwords and keys are stored encrypted.');
     } catch (err: unknown) {
       setError(err as Error);
     } finally {
@@ -419,7 +423,7 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
             }`}
           >
-            <Shield className="h-3.5 w-3.5" /> Network & VPN
+            <Shield className="h-3.5 w-3.5" /> Downloads & alerts
           </button>
         )}
 
@@ -750,9 +754,43 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
             </label>
           </div>
 
+          <div className="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Ask to delete watched movies after</span>
+              <span className="block text-xs text-slate-500 mt-0.5">Only movies someone has already watched. You always choose Yes or No.</span>
+              <select
+                value={networkForm.cleanup_review_days}
+                onChange={(event) =>
+                  setNetworkForm({ ...networkForm, cleanup_review_days: Number(event.target.value) as 0 | 30 | 90 | 180 })
+                }
+                className="mt-1.5 w-full sm:w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={180}>180 days</option>
+                <option value={0}>Never ask</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Phone alert when something is ready to watch</span>
+              <span className="block text-xs text-slate-500 mt-0.5">
+                Install the free ntfy app, subscribe to a topic name only you know, and paste its address here,
+                for example https://ntfy.sh/my-secret-movies. Leave empty for no alerts.
+              </span>
+              <input
+                type="url"
+                inputMode="url"
+                value={networkForm.ntfy_url}
+                onChange={(event) => setNetworkForm({ ...networkForm, ntfy_url: event.target.value.trim() })}
+                placeholder="https://ntfy.sh/your-topic"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+
           <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-4">
             <button type="submit" disabled={networkSaving} className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold px-4 py-2 text-xs disabled:opacity-50">
-              {networkSaving ? 'Saving…' : 'Save Network Settings'}
+              {networkSaving ? 'Saving…' : 'Save Settings'}
             </button>
           </div>
         </form>

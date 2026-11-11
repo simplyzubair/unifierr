@@ -23,6 +23,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "timezone": "UTC",
     "language": "en",
     "auto_update": False,
+    "cleanup_review_days": 90,  # 0 = never ask
+    "ntfy_url": "",
     "media_server": None,  # jellyfin | plex
     "vpn_enabled": False,
     "vpn_provider": "",

@@ -335,6 +335,8 @@ export interface SystemSettings {
   download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget' | null;
   trash_profiles?: boolean;
   trash_profile?: string | null;
+  cleanup_review_days?: 0 | 30 | 90 | 180;
+  ntfy_url?: string;
 }
 
 export interface SystemSettingsUpdate {
@@ -353,6 +355,8 @@ export interface SystemSettingsUpdate {
   download_client?: 'qbittorrent' | 'sabnzbd' | 'nzbget';
   trash_profiles?: boolean;
   trash_profile?: string;
+  cleanup_review_days?: 0 | 30 | 90 | 180;
+  ntfy_url?: string;
 }
 
 // API Error Shape

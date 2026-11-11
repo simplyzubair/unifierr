@@ -43,6 +43,9 @@ class SettingsIn(BaseModel):
     plex_claim: str | None = None
     download_client: Literal["qbittorrent", "sabnzbd", "nzbget"] | None = None
     trash_profiles: bool | None = None
+    cleanup_review_days: Literal[0, 30, 90, 180] | None = None
+    # Empty clears it. https only; private addresses are refused when sending (SafeAsyncClient).
+    ntfy_url: str | None = Field(default=None, max_length=300, pattern=r"^(https://[^\s/]+/[A-Za-z0-9_-]+)?$")
     trash_profile: str | None = Field(default=None, max_length=128)
 
 
@@ -59,6 +62,7 @@ async def get_settings_route(db: AsyncSession = Depends(get_db)):
             "plex_claim_saved": bool(s.get("plex_claim_enc")),
             "download_client": s["download_client"],
             "trash_profiles": s.get("trash_profiles", False), "trash_profile": s.get("trash_profile"),
+            "cleanup_review_days": s["cleanup_review_days"], "ntfy_url": s["ntfy_url"],
             "movies_path": MOVIES_PATH, "tv_path": TV_PATH, "downloads_path": TORRENTS_MOVIES.rsplit("/", 1)[0],
             "version": __version__}
 

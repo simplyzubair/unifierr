@@ -12,7 +12,7 @@ from app.core.errors import UnifierrError
 from app.services.common import adapter_for, get_services, get_setting, log_event, set_settings
 from app.services.media import delete_library_item
 
-REVIEW_DAYS = 90
+REVIEW_DAYS = 90  # default; admins can pick 30/90/180 or never (setting cleanup_review_days)
 
 
 async def due_movies(db: AsyncSession) -> list[dict[str, Any]]:
@@ -24,6 +24,9 @@ async def due_movies(db: AsyncSession) -> list[dict[str, Any]]:
     if not radarrs or jellyfin is None:
         return []
 
+    days = await get_setting(db, "cleanup_review_days")
+    if days == 0:
+        return []
     now = datetime.now(UTC)
     snoozed = await get_setting(db, "cleanup_snoozed_until") or {}
     # shortcut: Plex watched state not supported yet
@@ -47,7 +50,7 @@ async def due_movies(db: AsyncSession) -> list[dict[str, Any]]:
                 snooze = datetime.fromisoformat(snooze_value.replace("Z", "+00:00")) if snooze_value else None
             except (TypeError, ValueError):
                 continue
-            if now < downloaded + timedelta(days=REVIEW_DAYS) or (snooze and now < snooze):
+            if now < downloaded + timedelta(days=days or REVIEW_DAYS) or (snooze and now < snooze):
                 continue
             due.append(
                 {
@@ -76,6 +79,7 @@ async def answer(db: AsyncSession, external_id: int, delete: bool, who: str) -> 
         await set_settings(db, {"cleanup_snoozed_until": snoozed})
         await log_event(db, "cleanup", f"{who} deleted watched movie {movie.title} and its files.")
     else:
-        snoozed[str(movie.tmdb_id)] = (datetime.now(UTC) + timedelta(days=REVIEW_DAYS)).isoformat()
+        days = await get_setting(db, "cleanup_review_days") or REVIEW_DAYS
+        snoozed[str(movie.tmdb_id)] = (datetime.now(UTC) + timedelta(days=days)).isoformat()
         await set_settings(db, {"cleanup_snoozed_until": snoozed})
-        await log_event(db, "cleanup", f"{who} kept watched movie {movie.title}; it will be reviewed again in 90 days.")
+        await log_event(db, "cleanup", f"{who} kept watched movie {movie.title}; we will ask again in {days} days.")

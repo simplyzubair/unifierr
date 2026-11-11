@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
 import { CleanupPrompt } from '@/components/common/CleanupPrompt';
-import { systemApi } from '@/api';
+import { healthApi, systemApi } from '@/api';
 import {
   Compass,
   Inbox,
@@ -29,6 +29,7 @@ interface NavItem {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  manage?: boolean; // shown under the smaller "Manage" heading
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -36,11 +37,11 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Requests', path: '/requests', icon: Inbox },
   { name: 'Downloads', path: '/downloads', icon: Download, adminOnly: true },
   { name: 'Library', path: '/library', icon: Film },
-  { name: 'Indexers', path: '/indexers', icon: Search, adminOnly: true },
-  { name: 'Subtitles', path: '/subtitles', icon: SubtitlesIcon, adminOnly: true },
-  { name: 'Health', path: '/health', icon: Activity, adminOnly: true },
-  { name: 'Updates', path: '/updates', icon: ArrowUpCircle, adminOnly: true },
-  { name: 'Settings', path: '/settings', icon: SettingsIcon, adminOnly: true },
+  { manage: true, name: 'Indexers', path: '/indexers', icon: Search, adminOnly: true },
+  { manage: true, name: 'Subtitles', path: '/subtitles', icon: SubtitlesIcon, adminOnly: true },
+  { manage: true, name: 'Health', path: '/health', icon: Activity, adminOnly: true },
+  { manage: true, name: 'Updates', path: '/updates', icon: ArrowUpCircle, adminOnly: true },
+  { manage: true, name: 'Settings', path: '/settings', icon: SettingsIcon, adminOnly: true },
 ];
 
 export const AppShell: React.FC = () => {
@@ -50,12 +51,25 @@ export const AppShell: React.FC = () => {
   const navigate = useNavigate();
 
   const filteredNavItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const firstManage = filteredNavItems.findIndex((item) => item.manage);
+  const manageHeading = (index: number) =>
+    index === firstManage && (
+      <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Manage</div>
+    );
 
   // A small dot on "Updates" when a newer version was found by the last check (never contacts the registry).
   const [updateReady, setUpdateReady] = useState(false);
+  // Same calm dot on "Health" when something needs a look, so problems are noticed without opening the page.
+  const [healthIssue, setHealthIssue] = useState(false);
+  const dotFor = (path: string) =>
+    path === '/updates' && updateReady ? 'New version available'
+      : path === '/health' && healthIssue ? 'Something needs a look' : null;
   useEffect(() => {
     if (!isAdmin) return;
-    const look = () => systemApi.getUpdate().then((u) => setUpdateReady(!!u.available), () => undefined);
+    const look = () => {
+      systemApi.getUpdate().then((u) => setUpdateReady(!!u.available), () => undefined);
+      healthApi.getOverview().then((h) => setHealthIssue(h.overall !== 'ok'), () => undefined);
+    };
     void look();
     const timer = setInterval(look, 10 * 60 * 1000);
     return () => clearInterval(timer);
@@ -88,9 +102,12 @@ export const AppShell: React.FC = () => {
         )}
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {filteredNavItems.map((item) => {
+          {filteredNavItems.map((item, index) => {
             const Icon = item.icon;
+            const dot = dotFor(item.path);
             return (
+              <React.Fragment key={item.path}>
+              {manageHeading(index)}
               <NavLink
                 key={item.path}
                 to={item.path}
@@ -104,10 +121,9 @@ export const AppShell: React.FC = () => {
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 <span>{item.name}</span>
-                {item.path === '/updates' && updateReady && (
-                  <span className="ml-auto h-2 w-2 rounded-full bg-sky-500" role="img" aria-label="New version available" />
-                )}
+                {dot && <span className="ml-auto h-2 w-2 rounded-full bg-sky-500" role="img" aria-label={dot} />}
               </NavLink>
+              </React.Fragment>
             );
           })}
         </nav>
@@ -180,9 +196,12 @@ export const AppShell: React.FC = () => {
         {/* Mobile Dropdown Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-1 shadow-lg z-30">
-            {filteredNavItems.map((item) => {
+            {filteredNavItems.map((item, index) => {
               const Icon = item.icon;
+              const dot = dotFor(item.path);
               return (
+                <React.Fragment key={item.path}>
+                {manageHeading(index)}
                 <NavLink
                   key={item.path}
                   to={item.path}
@@ -197,10 +216,9 @@ export const AppShell: React.FC = () => {
                 >
                   <Icon className="h-5 w-5" />
                   <span>{item.name}</span>
-                  {item.path === '/updates' && updateReady && (
-                    <span className="h-2 w-2 rounded-full bg-sky-500" role="img" aria-label="New version available" />
-                  )}
+                  {dot && <span className="h-2 w-2 rounded-full bg-sky-500" role="img" aria-label={dot} />}
                 </NavLink>
+                </React.Fragment>
               );
             })}
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -226,7 +244,7 @@ export const AppShell: React.FC = () => {
 
         {/* Mobile Bottom Navigation for Quick Access */}
         <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md py-2 px-1 z-20">
-          {filteredNavItems.slice(0, 5).map((item) => {
+          {filteredNavItems.filter((item) => !item.manage).map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
