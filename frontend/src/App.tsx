@@ -16,7 +16,6 @@ import { Downloads } from '@/pages/downloads/Downloads';
 import { Library } from '@/pages/library/Library';
 import { Indexers } from '@/pages/indexers/Indexers';
 import { Subtitles } from '@/pages/subtitles/Subtitles';
-import { Health } from '@/pages/health/Health';
 import { Settings } from '@/pages/settings/Settings';
 import { Updates } from '@/pages/updates/Updates';
 
@@ -134,14 +133,7 @@ export const App: React.FC = () => {
                     </ProtectedRoute>
                   }
                 />
-                <Route
-                  path="/health"
-                  element={
-                    <ProtectedRoute adminOnly>
-                      <Health />
-                    </ProtectedRoute>
-                  }
-                />
+                <Route path="/health" element={<Navigate to="/settings?tab=health" replace />} />
                 <Route
                   path="/settings"
                   element={

@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
 import { CleanupPrompt } from '@/components/common/CleanupPrompt';
 import { UpdateButton } from '@/components/common/UpdateButton';
-import { healthApi } from '@/api';
+import { healthApi, systemApi } from '@/api';
 import {
   Compass,
   Inbox,
@@ -13,7 +13,6 @@ import {
   Film,
   Search,
   Subtitles as SubtitlesIcon,
-  Activity,
   Settings as SettingsIcon,
   Sun,
   Moon,
@@ -39,7 +38,6 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Library', path: '/library', icon: Film },
   { manage: true, name: 'Indexers', path: '/indexers', icon: Search, adminOnly: true },
   { manage: true, name: 'Subtitles', path: '/subtitles', icon: SubtitlesIcon, adminOnly: true },
-  { manage: true, name: 'Health', path: '/health', icon: Activity, adminOnly: true },
   { manage: true, name: 'Settings', path: '/settings', icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -56,10 +54,14 @@ export const AppShell: React.FC = () => {
       <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Manage</div>
     );
 
-  // Same calm dot on "Health" when something needs a look, so problems are noticed without opening the page.
+  // Calm dot on "Settings" (its Health tab) when something needs a look, so problems are noticed without opening the page.
   const [healthIssue, setHealthIssue] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    systemApi.getVersion().then((h) => setVersion(h.build ? `${h.version} · ${h.build}` : h.version), () => undefined);
+  }, []);
   const dotFor = (path: string) =>
-    path === '/health' && healthIssue ? 'Something needs a look' : null;
+    path === '/settings' && healthIssue ? 'Something needs a look (see Settings → Health)' : null;
   useEffect(() => {
     if (!isAdmin) return;
     const look = () => {
@@ -76,6 +78,7 @@ export const AppShell: React.FC = () => {
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md z-30 select-none">
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800/80">
           <Logo size="md" />
+          {version && <span className="text-[11px] font-medium text-slate-400 tabular-nums">v{version}</span>}
         </div>
 
         {/* Wizard reminder banner if setup incomplete and user is admin */}
@@ -141,6 +144,7 @@ export const AppShell: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1">
+              <UpdateButton isAdmin={isAdmin} />
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -167,8 +171,12 @@ export const AppShell: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Mobile Top Header */}
         <header className="flex md:hidden items-center justify-between px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-20">
-          <Logo size="sm" />
+          <div className="flex items-baseline gap-2">
+            <Logo size="sm" />
+            {version && <span className="text-[10px] font-medium text-slate-400 tabular-nums">v{version}</span>}
+          </div>
           <div className="flex items-center gap-2">
+            <UpdateButton isAdmin={isAdmin} />
             <button
               type="button"
               onClick={toggleTheme}
@@ -236,7 +244,6 @@ export const AppShell: React.FC = () => {
           </div>
         </main>
         {isAdmin && <CleanupPrompt />}
-        <UpdateButton isAdmin={isAdmin} />
 
         {/* Mobile Bottom Navigation for Quick Access */}
         <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-1 z-20">

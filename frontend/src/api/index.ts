@@ -398,6 +398,8 @@ export const systemApi = {
 
   getUpdate: () => apiClient<UpdateInfo>('/api/system/update', { method: 'GET' }),
 
+  getVersion: () => apiClient<{ version: string; build?: string }>('/api/health', { method: 'GET' }),
+
   getClientLatest: () =>
     apiClient<{ version?: string; android_url?: string }>('/api/client/latest', { method: 'GET' }),
 

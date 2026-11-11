@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -60,7 +61,7 @@ def _set_cookie(resp: Response, token: str) -> None:
 
 @router.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "version": __version__}
+    return {"status": "ok", "version": __version__, "build": (os.environ.get("UNIFIERR_REVISION") or "")[:7]}
 
 
 @router.get("/setup/status")

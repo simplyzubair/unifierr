@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Health } from '@/pages/health/Health';
 import { servicesApi, authApi, systemApi, jobsApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import { ErrorCard } from '@/components/common/ErrorCard';
@@ -23,15 +24,19 @@ import {
   Plus,
   Wand2,
   Shield,
+  Activity,
 } from 'lucide-react';
 
-type SettingsTab = 'apps' | 'network' | 'users' | 'account' | 'backup' | 'remote' | 'about';
+type SettingsTab = 'health' | 'apps' | 'network' | 'users' | 'account' | 'backup' | 'remote' | 'about';
 
 export const Settings: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('apps');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    searchParams.get('tab') === 'health' && isAdmin ? 'health' : 'apps',
+  );
   const [error, setError] = useState<Error | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -401,6 +406,19 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
 
       {/* Tabs navigation */}
       <div className="flex flex-wrap gap-1 rounded-2xl bg-slate-200/70 p-1 dark:bg-slate-800/80">
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('health')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+              activeTab === 'health'
+                ? 'bg-white text-brand-700 shadow-xs dark:bg-slate-900 dark:text-brand-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <Activity className="h-3.5 w-3.5" /> Health
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setActiveTab('apps')}
@@ -505,6 +523,8 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
           </button>
         </div>
       )}
+
+      {activeTab === 'health' && <Health />}
 
       {/* ---------------- APPS TAB CONTENT ---------------- */}
       {activeTab === 'apps' && (

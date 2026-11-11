@@ -91,6 +91,13 @@ jobs:
           cp android/MainActivity.kt src-tauri/gen/android/app/src/main/java/com/unifierr/client/MainActivity.kt
           cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/  # Unifierr launcher icon
         working-directory: client
+      - name: Same signing key on every build, so updates install over the old app and keep its data
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE }}
+        run: |
+          test -n "$KEYSTORE" || { echo "ANDROID_DEBUG_KEYSTORE secret is missing"; exit 1; }
+          mkdir -p ~/.android
+          echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
       - run: npx tauri android build --debug --apk --target aarch64
         working-directory: client
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

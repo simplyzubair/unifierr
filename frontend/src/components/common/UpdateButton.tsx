@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowUpCircle, Loader2 } from 'lucide-react';
+import { Download, Loader2, RefreshCw } from 'lucide-react';
 import { systemApi } from '@/api';
 
 // The Android app adds "UnifierrApp/<version>" to its browser name (client/android/MainActivity.kt).
@@ -17,9 +17,9 @@ const POLL_MS = 4000;
 const GIVE_UP_MS = 5 * 60 * 1000;
 
 /**
- * One small button, bottom left, only when something new is ready:
- * - admins: a newer Unifierr server -> one tap installs it and reloads the page;
- * - inside the phone app: a newer app -> one tap downloads it.
+ * Small icon next to the theme button. Admins: refresh icon checks for updates; it turns into a download icon
+ * when a new server version is ready (one tap installs it and reloads). Inside the phone app it also turns into a
+ * download icon when a newer app is out.
  */
 export const UpdateButton: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const [serverReady, setServerReady] = useState(false);
@@ -81,28 +81,55 @@ export const UpdateButton: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
     }
   };
 
-  const place = 'fixed left-3 bottom-20 md:left-[17rem] md:bottom-4 z-30';
-  const pill =
-    'flex items-center gap-1.5 rounded-full bg-brand-600 hover:bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg disabled:opacity-80';
+  const [checking, setChecking] = useState(false);
+  const check = async () => {
+    setChecking(true);
+    setNote(null);
+    try {
+      const u = await systemApi.checkUpdate();
+      setServerReady(!!u.available);
+      setNote(u.available ? null : "You're up to date");
+    } catch {
+      setNote('Could not check right now');
+    } finally {
+      setChecking(false);
+    }
+  };
 
-  if (isAdmin && (serverReady || updating)) {
+  const btn = 'relative p-1.5 rounded-lg transition disabled:opacity-70';
+  const quiet = 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800';
+  const ready = 'text-brand-600 bg-brand-50 hover:bg-brand-100 dark:text-brand-300 dark:bg-brand-950/60';
+  const dot = <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sky-500" aria-hidden="true" />;
+
+  // Phone app has a newer version: a download icon that fetches it.
+  if (appUrl && !(isAdmin && (serverReady || updating))) {
     return (
-      <div className={`${place} flex flex-col items-start gap-1`}>
-        {note && <span className="rounded-lg bg-slate-900/90 px-2 py-1 text-[11px] text-slate-200">{note}</span>}
-        <button type="button" onClick={updateServer} disabled={updating} className={pill}>
-          {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowUpCircle className="h-4 w-4" aria-hidden="true" />}
-          {updating ? 'Updating… back in a minute' : 'Update'}
-        </button>
-      </div>
-    );
-  }
-  if (appUrl) {
-    return (
-      <a href={appUrl} className={`${place} ${pill}`}>
-        <ArrowUpCircle className="h-4 w-4" aria-hidden="true" />
-        Update app
+      <a href={appUrl} className={`${btn} ${ready}`} title="New app version: tap to download" aria-label="Download the new app version">
+        <Download className="h-4 w-4" />
+        {dot}
       </a>
     );
   }
-  return null;
+  if (!isAdmin) return null;
+  if (updating) {
+    return (
+      <span className={`${btn} ${ready}`} title="Updating… back in a minute" role="status" aria-label="Updating, back in a minute">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </span>
+    );
+  }
+  if (serverReady) {
+    return (
+      <button type="button" onClick={updateServer} className={`${btn} ${ready}`} title="Update ready: tap to install" aria-label="Install the update">
+        <Download className="h-4 w-4" />
+        {dot}
+      </button>
+    );
+  }
+  return (
+    <button type="button" onClick={check} disabled={checking} className={`${btn} ${quiet}`}
+      title={note ?? 'Check for updates'} aria-label={note ?? 'Check for updates'}>
+      <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
+    </button>
+  );
 };
