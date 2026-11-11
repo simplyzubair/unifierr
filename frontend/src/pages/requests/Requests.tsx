@@ -7,6 +7,8 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RequestJourney } from '@/components/common/RequestJourney';
+import { PosterLink } from '@/components/common/PosterLink';
+import { useWatchLink } from '@/hooks/useWatchLink';
 import type { RequestOut } from '@/types/api';
 import {
   Inbox,
@@ -32,6 +34,7 @@ const STATUS_FILTERS = [
 
 export const Requests: React.FC = () => {
   const { isAdmin } = useAuth();
+  const watchLink = useWatchLink();
   const [requests, setRequests] = useState<RequestOut[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -172,7 +175,7 @@ export const Requests: React.FC = () => {
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition"
             >
               <div className="flex items-center gap-3.5 min-w-0">
-                <div className="h-16 w-11 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
+                <PosterLink href={watchLink(req)} title={req.title} className="relative h-16 w-11 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
                   {req.poster_url ? (
                     <img
                       src={req.poster_url}
@@ -185,13 +188,18 @@ export const Requests: React.FC = () => {
                       {req.media_type === 'series' ? <Tv className="h-5 w-5" /> : <Film className="h-5 w-5" />}
                     </div>
                   )}
-                </div>
+                </PosterLink>
 
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {req.title}
-                    </span>
+                    {watchLink(req) ? (
+                      <a href={watchLink(req)!} target="_blank" rel="noopener noreferrer"
+                        className="text-sm font-bold text-slate-900 dark:text-white truncate hover:text-brand-600 dark:hover:text-brand-300 hover:underline">
+                        {req.title}
+                      </a>
+                    ) : (
+                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{req.title}</span>
+                    )}
                     {req.year && (
                       <span className="text-xs text-slate-500 shrink-0">({req.year})</span>
                     )}

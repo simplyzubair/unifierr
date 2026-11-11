@@ -69,6 +69,11 @@ async def recent(_: User = Depends(current_user), db: AsyncSession = Depends(get
     return await media.recent(db)
 
 
+@router.get("/media/watch-links")
+async def watch_links(_: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    return await media.watch_links(db)
+
+
 @router.get("/requests", response_model=list[media.RequestOut])
 async def list_requests(status: str | None = Query(default=None, max_length=16),
                         user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):

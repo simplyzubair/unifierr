@@ -203,6 +203,29 @@ async def recent(db: AsyncSession) -> list[MediaItem]:
     return []
 
 
+_watch_cache: tuple[float, dict] = (0.0, {})
+WATCH_CACHE_SECONDS = 60
+
+
+async def watch_links(db: AsyncSession) -> dict:
+    """Jellyfin ids so the Library and Requests cards can open the title in Jellyfin. Empty when unavailable."""
+    global _watch_cache
+    now = asyncio.get_running_loop().time()
+    if _watch_cache[0] and now - _watch_cache[0] < WATCH_CACHE_SECONDS:
+        return _watch_cache[1]
+    out: dict = {}
+    svc = await get_service(db, ServiceKind.jellyfin)
+    if svc and svc.enabled and svc.api_key_enc:
+        try:
+            async with adapter_for(db, ServiceKind.jellyfin) as jf:
+                server_id, items = await jf.watch_ids()
+            out = {"server": "jellyfin", "server_id": server_id, "items": items}
+        except UnifierrError as exc:
+            log.info("Jellyfin links unavailable: %s", exc)
+    _watch_cache = (now, out)
+    return out
+
+
 # ---------------- downloads ----------------
 
 # Every download client whose queue appears in the unified Downloads view.

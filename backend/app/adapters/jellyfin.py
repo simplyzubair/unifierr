@@ -158,6 +158,25 @@ class JellyfinAdapter(BaseAdapter):
         paths = [(s.get("NowPlayingItem") or {}).get("Path") for s in sessions if isinstance(s, dict)]
         return {p.replace("\\", "/").rsplit("/", 1)[-1] for p in paths if p}
 
+    async def watch_ids(self) -> tuple[str, dict[str, str]]:
+        """(server id, {"movie:<tmdb>" / "series:<tvdb>" / "series:tmdb:<tmdb>": Jellyfin item id}) for deep links."""
+        info = parse_json(await self._api("GET", "/System/Info/Public", token=False), self.display_name)
+        data = parse_json(await self._api("GET", "/Items", params={
+            "Recursive": "true", "IncludeItemTypes": "Movie,Series", "Fields": "ProviderIds"}), self.display_name)
+        ids: dict[str, str] = {}
+        for it in (data or {}).get("Items", []):
+            pid, item_id = it.get("ProviderIds") or {}, str(it.get("Id") or "")
+            if not item_id:
+                continue
+            if it.get("Type") == "Movie" and pid.get("Tmdb"):
+                ids[f"movie:{pid['Tmdb']}"] = item_id
+            elif it.get("Type") == "Series":
+                if pid.get("Tvdb"):
+                    ids[f"series:{pid['Tvdb']}"] = item_id
+                if pid.get("Tmdb"):
+                    ids[f"series:tmdb:{pid['Tmdb']}"] = item_id
+        return str((info or {}).get("Id") or ""), ids
+
     async def refresh_library(self) -> None:
         await self._api("POST", "/Library/Refresh")
 

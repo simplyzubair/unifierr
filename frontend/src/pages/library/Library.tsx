@@ -5,6 +5,8 @@ import { AvailabilityBadge } from '@/components/common/Badge';
 import { PosterSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { PosterLink } from '@/components/common/PosterLink';
+import { useWatchLink } from '@/hooks/useWatchLink';
 import { useAuth } from '@/context/AuthContext';
 import type { MediaResult, MediaType } from '@/types/api';
 import { Film, Tv, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
@@ -12,6 +14,7 @@ import { Film, Tv, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-re
 export const Library: React.FC = () => {
   const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<MediaType>('movie');
+  const watchLink = useWatchLink();
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'missing'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<MediaResult[]>([]);
@@ -181,7 +184,7 @@ export const Library: React.FC = () => {
               key={`${item.media_type}-${item.external_id || idx}`}
               className="flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition"
             >
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
+              <PosterLink href={watchLink(item)} title={item.title}>
                 {item.poster_url ? (
                   <img
                     src={item.poster_url}
@@ -205,7 +208,7 @@ export const Library: React.FC = () => {
                     <AlertTriangle className="h-3.5 w-3.5" />
                   </div>
                 )}
-              </div>
+              </PosterLink>
 
               <div className="mt-2.5 flex flex-1 flex-col justify-between space-y-2">
                 <div>

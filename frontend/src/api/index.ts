@@ -201,6 +201,8 @@ export const servicesApi = {
 // ---------------- MEDIA & REQUESTS ----------------
 
 export const mediaApi = {
+  getWatchLinks: () =>
+    apiClient<{ server_id?: string; items?: Record<string, string> }>('/api/media/watch-links', { method: 'GET' }),
   getCleanupDue: () => apiClient<CleanupMovie[]>('/api/media/cleanup', { method: 'GET' }),
   answerCleanup: (id: number, del: boolean) => apiClient<{ ok: boolean }>(`/api/media/cleanup/${id}`, {
     method: 'POST', body: JSON.stringify({ delete: del }),
