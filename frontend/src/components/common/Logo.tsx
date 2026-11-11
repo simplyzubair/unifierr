@@ -39,21 +39,9 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
             </filter>
           </defs>
           <rect width="40" height="40" rx="10" fill="url(#unifierrGrad)" />
-          {/* Unifierr interconnected nodes & media pulse */}
-          <path
-            d="M13 14a3 3 0 1 0 0 .01M27 14a3 3 0 1 0 0 .01M20 26a3 3 0 1 0 0 .01"
-            stroke="#ffffff"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M15 15.5l4 8.5M25 15.5l-4 8.5M15.5 14h9"
-            stroke="#ffffff"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="20" cy="18" r="2.2" fill="#ffffff" />
+          {/* A simple U; the dot at the bottom is where everything meets. */}
+          <path d="M12.5 11v10a7.5 7.5 0 0 0 15 0V11" stroke="#ffffff" strokeWidth="4.2" strokeLinecap="round" />
+          <circle cx="20" cy="28.5" r="3.8" fill="#ffffff" stroke="#5b5bd6" strokeWidth="1.7" />
         </svg>
       </div>
       {showText && (
