@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080d1b">
   <meta name="description" content="Download Unifierr preview apps and the self-hosted server package.">
-  <title>Unifierr — downloads</title>
+  <title>Unifierr — Downloads</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg viewBox='0 0 40 40' width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'><defs><linearGradient id='ug' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23818cf8'/><stop offset='50%' stop-color='%236366f1'/><stop offset='100%' stop-color='%234338ca'/></linearGradient></defs><rect width='40' height='40' rx='10' fill='url(%23ug)'/><path d='M13 14a3 3 0 1 0 0 .01M27 14a3 3 0 1 0 0 .01M20 26a3 3 0 1 0 0 .01' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' fill='none'/><path d='M15 15.5l4 8.5M25 15.5l-4 8.5M15.5 14h9' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='20' cy='18' r='2' fill='%23fff'/></svg>" />
   <style>
     :root { color-scheme: dark; --bg:#080d1b; --panel:#111a2d; --line:#24314a; --text:#f4f7ff; --muted:#a9b7d0; --purple:#7667ff; --blue:#70b9ff; }
     * { box-sizing:border-box; }
@@ -13,7 +14,7 @@
     main { width:min(920px,calc(100% - 32px)); margin:0 auto; padding:52px 0 72px; }
     header { margin-bottom:32px; }
     .brand { display:flex; align-items:center; gap:12px; font-size:22px; font-weight:750; }
-    .mark { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; background:linear-gradient(145deg,#8d82ff,#4d42da); font-size:21px; }
+    .mark { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; overflow:hidden; }
     h1 { margin:27px 0 8px; font-size:clamp(32px,6vw,48px); line-height:1.1; letter-spacing:-.04em; }
     p { margin:0; color:var(--muted); }
     .notice { margin-top:22px; padding:14px 16px; border:1px solid #5249a4; border-radius:12px; background:#16183a; color:#dcd9ff; }
@@ -21,8 +22,8 @@
     section { padding:21px; border:1px solid var(--line); border-radius:17px; background:var(--panel); }
     h2 { margin:0 0 7px; font-size:20px; }
     .meta { margin:0 0 17px; font-size:14px; }
-    .button { display:inline-flex; align-items:center; min-height:42px; padding:9px 14px; border:1px solid #7468ff; border-radius:10px; background:#574bea; color:white; font-weight:700; text-decoration:none; }
-    .button:hover { background:#685cf5; }
+    .button { display:inline-flex; align-items:center; min-height:42px; padding:9px 14px; border:1px solid #6366f1; border-radius:10px; background:#4f46e5; color:white; font-weight:700; text-decoration:none; }
+    .button:hover { background:#6366f1; }
     .button.secondary { border-color:#3a4c69; background:#18243a; }
     .details { margin-top:15px; font-size:13px; }
     .details a, footer a { color:var(--blue); }
@@ -33,7 +34,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">✣</span> Unifierr</div>
+      <div class="brand"><span class="mark"><svg viewBox="0 0 40 40" width="100%" height="100%" aria-hidden="true"><defs><linearGradient id="ug" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#818cf8"/><stop offset="50%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4338ca"/></linearGradient></defs><rect width="40" height="40" rx="10" fill="url(#ug)"/><path d="M13 14a3 3 0 1 0 0 .01M27 14a3 3 0 1 0 0 .01M20 26a3 3 0 1 0 0 .01" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M15 15.5l4 8.5M25 15.5l-4 8.5M15.5 14h9" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="20" cy="18" r="2" fill="#fff"/></svg></span> Unifierr</div>
       <h1>Downloads</h1>
       <p>One simple client for your Unifierr server, wherever you use it.</p>
       <div class="notice"><strong>Preview release:</strong> these builds are for early testing. Windows and macOS builds are unsigned; the Android APK is an ARM64 debug build.</div>

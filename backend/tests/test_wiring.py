@@ -172,3 +172,12 @@ async def test_no_converter_step_without_unmanic(client, fakes):
     job = Job(id="t", kind="wire")
     await run_wiring(job)
     assert not any(s.name == "Set up automatic movie converter" for s in job.steps)
+
+
+async def test_qbittorrent_is_told_to_stop_seeding_when_finished(client, fakes):
+    from app.services.wiring import STOP_SEEDING
+
+    await _connect_all([ServiceKind.radarr, ServiceKind.qbittorrent])
+    await run_wiring(Job(id="t", kind="wire"))
+    prefs = [c[2][0] for c in CALLS if c[0] == "qbittorrent" and c[1] == "set_preferences"]
+    assert prefs and prefs[0] == STOP_SEEDING and STOP_SEEDING["max_ratio"] == 0

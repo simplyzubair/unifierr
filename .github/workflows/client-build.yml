@@ -86,8 +86,10 @@ jobs:
         working-directory: client
       - run: npx tauri android init --ci
         working-directory: client
-      - name: Keep the app between the Android system bars
-        run: cp android/MainActivity.kt src-tauri/gen/android/app/src/main/java/com/unifierr/client/MainActivity.kt
+      - name: Unifierr Android layout (system bars) and launcher icon
+        run: |
+          cp android/MainActivity.kt src-tauri/gen/android/app/src/main/java/com/unifierr/client/MainActivity.kt
+          cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/  # Unifierr launcher icon
         working-directory: client
       - run: npx tauri android build --debug --apk --target aarch64
         working-directory: client

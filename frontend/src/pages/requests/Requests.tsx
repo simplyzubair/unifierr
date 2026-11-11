@@ -6,6 +6,7 @@ import { TableSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { RequestJourney } from '@/components/common/RequestJourney';
 import type { RequestOut } from '@/types/api';
 import {
   Inbox,
@@ -216,9 +217,7 @@ export const Requests: React.FC = () => {
                       <span className="italic">{req.note}</span>
                     </div>
                   )}
-                  <div className="text-xs text-slate-600 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Progress:</span> {req.stage_message}
-                  </div>
+                  <RequestJourney stage={req.stage} message={req.stage_message} />
                 </div>
               </div>
 

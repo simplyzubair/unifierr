@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { healthApi, storageApi, eventsApi } from '@/api';
+import { healthApi, storageApi, eventsApi, setupApi, jobsApi } from '@/api';
 import { ErrorCard } from '@/components/common/ErrorCard';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { CardSkeleton } from '@/components/common/Skeleton';
-import type { HealthOverview, StorageResponse, EventItem, HealthIssue } from '@/types/api';
+import type { HealthOverview, StorageResponse, EventItem, HealthIssue, Job } from '@/types/api';
 import {
   Activity,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   RefreshCw,
   FolderCheck,
   ShieldAlert,
+  Wrench,
 } from 'lucide-react';
 
 export const Health: React.FC = () => {
@@ -49,6 +50,30 @@ export const Health: React.FC = () => {
     loadData();
   }, []);
 
+  // "Try to fix automatically": re-run the setup's "Connect everything" job. It is safe to repeat: it only adds
+  // missing connections and folders, never removes anything.
+  const [fixJob, setFixJob] = useState<Job | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const runFix = async () => {
+    setFixing(true);
+    setFixJob(null);
+    try {
+      const { job_id } = await setupApi.wire();
+      for (let i = 0; i < 200; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const job = await jobsApi.getJob(job_id);
+        setFixJob(job);
+        if (job.status !== 'running') break;
+      }
+      await loadData(true);
+    } catch (err: unknown) {
+      setError(err as Error);
+    } finally {
+      setFixing(false);
+    }
+  };
+  const fixFailed = fixJob?.steps.filter((step) => step.status === 'failed') ?? [];
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -83,6 +108,43 @@ export const Health: React.FC = () => {
       </div>
 
       <ErrorCard error={error} onDismiss={() => setError(null)} />
+
+      {overview && overview.overall !== 'ok' && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              Unifierr can reconnect your apps and recreate missing folders and settings for you. It never deletes anything.
+            </p>
+            <button
+              type="button"
+              onClick={() => void runFix()}
+              disabled={fixing}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3.5 py-2 text-xs font-semibold disabled:opacity-50 shrink-0"
+            >
+              <Wrench className={`h-3.5 w-3.5 ${fixing ? 'animate-spin' : ''}`} />
+              {fixing ? 'Fixing…' : 'Try to fix automatically'}
+            </button>
+          </div>
+          {fixJob && fixJob.status !== 'running' && (
+            <div role="status" className="text-sm">
+              {fixFailed.length === 0 ? (
+                <p className="text-emerald-700 dark:text-emerald-300">
+                  Done. Everything Unifierr can set up is connected. Anything still listed below needs a manual step.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {fixFailed.map((step) => (
+                    <li key={step.name} className="text-amber-800 dark:text-amber-300">
+                      <span className="font-semibold">{step.name}:</span> {step.message}
+                      {step.fix && <span className="block text-xs opacity-90">How to fix: {step.fix}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

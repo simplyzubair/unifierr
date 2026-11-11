@@ -14,8 +14,8 @@ import type {
 } from '@/types/api';
 import {
   CheckCircle2,
-  AlertTriangle,
-  XCircle,
+  Info,
+  MinusCircle,
   HardDrive,
   Cpu,
   Layers,
@@ -40,6 +40,12 @@ const STEPS = [
   'Connect',
   'Ready',
 ];
+
+const WIRE_ATTEMPTS = 3;
+
+const STEP_WORD: Record<string, string> = {
+  ok: 'Done', running: 'Working…', pending: 'Waiting', skipped: 'Not needed', failed: 'Later',
+};
 
 const ALL_APPS: Array<{ kind: ServiceKind; name: string; desc: string; defaultInstall: boolean }> = [
   { kind: 'radarr', name: 'Radarr', desc: 'Finds, downloads, and organizes movies automatically.', defaultInstall: true },
@@ -354,18 +360,21 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
   };
 
   // Step 5: Wire everything
-  const startWire = async () => {
+  const wireAttemptRef = useRef(0);
+  const startWire = async (attempt = 1) => {
+    wireAttemptRef.current = attempt;
     setLoading(true);
     setError(null);
     try {
       const { job_id } = await setupApi.wire();
       pollJob(job_id, (job) => {
-        setWireJob(job);
-        if (job.status === 'done') {
-          setLoading(false);
-        } else if (job.status === 'failed') {
-          setLoading(false);
+        if (job.status === 'failed' && attempt < WIRE_ATTEMPTS) {
+          // Freshly installed apps often need a minute to finish starting: try again quietly.
+          setTimeout(() => void startWire(attempt + 1), 20000);
+          return;
         }
+        setWireJob(job);
+        if (job.status !== 'running') setLoading(false);
       });
     } catch (err: unknown) {
       setError(err as Error);
@@ -518,8 +527,8 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
                     Available ({envReport.docker_version || 'Ready'})
                   </div>
                 ) : (
-                  <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-400">
-                    <XCircle className="h-4 w-4" />
+                  <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-sky-600 dark:text-sky-400">
+                    <Info className="h-4 w-4" />
                     Not connected
                   </div>
                 )}
@@ -529,15 +538,15 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
 
           {/* Docker Error details if not available */}
           {envReport && !envReport.docker_available && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30 p-4 text-sm text-amber-900 dark:text-amber-200 space-y-2">
+            <div className="rounded-xl border border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/30 p-4 text-sm text-sky-900 dark:text-sky-200 space-y-2">
               <div className="flex items-center gap-2 font-semibold">
-                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                 Docker engine is not reachable
               </div>
               <p className="text-xs leading-relaxed">
                 {envReport.docker_error || 'Unifierr needs access to the Docker socket (/var/run/docker.sock) to manage and connect apps.'}
               </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-xs text-sky-700 dark:text-sky-300">
                 You can still adopt apps already running on your network if Docker is not present.
               </p>
             </div>
@@ -660,18 +669,18 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
 
             {/* Folder Report Display */}
             {folderReport && (
-              <div className={`rounded-xl border p-4 space-y-3 ${folderReport.writable ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20'}`}>
-                <div className={`flex items-center gap-2 text-sm font-semibold ${folderReport.writable ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}>
+              <div className={`rounded-xl border p-4 space-y-3 ${folderReport.writable ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-sky-200 dark:border-sky-900/60 bg-sky-50/40 dark:bg-sky-950/20'}`}>
+                <div className={`flex items-center gap-2 text-sm font-semibold ${folderReport.writable ? 'text-emerald-800 dark:text-emerald-300' : 'text-sky-800 dark:text-sky-300'}`}>
                   {folderReport.writable
                     ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    : <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+                    : <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
                   {folderReport.writable ? 'Storage folder is ready' : 'Storage needs attention'}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 dark:text-slate-300">
                   <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
                     <span className="block text-[10px] text-slate-400 uppercase font-semibold">Writable</span>
-                    <span className={`font-semibold ${folderReport.writable ? 'text-emerald-600' : 'text-red-600'}`}>{folderReport.writable ? 'Yes' : 'No'}</span>
+                    <span className={`font-semibold ${folderReport.writable ? 'text-emerald-600' : 'text-sky-600'}`}>{folderReport.writable ? 'Yes' : 'No'}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
                     <span className="block text-[10px] text-slate-400 uppercase font-semibold">Hardlinks Supported</span>
@@ -684,10 +693,10 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
                 </div>
 
                 {folderReport.problems && folderReport.problems.length > 0 && (
-                  <div className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                  <div className="space-y-1 text-xs text-sky-700 dark:text-sky-300">
                     {folderReport.problems.map((p, i) => (
                       <div key={i} className="flex items-center gap-1.5">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <Info className="h-3.5 w-3.5 shrink-0" />
                         <span>{p.message}</span>
                       </div>
                     ))}
@@ -1142,7 +1151,7 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
           </section>
 
           {mediaServerChoice === 'plex' && selectedToInstall.has('plex') && !adoptedKinds.has('plex') && (
-            <section className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-3">
+            <section className="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/50 dark:bg-sky-950/20 p-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Claim your new Plex server</h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
@@ -1198,15 +1207,15 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
           </div>
 
           {adoptionWarnings.length > 0 && (
-            <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4" />
-                Some existing apps need a quick connection check
+            <div className="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/30 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-200">
+                <Info className="h-4 w-4" />
+                Some existing apps can be connected later
               </div>
-              <p className="text-xs text-amber-800 dark:text-amber-300">
+              <p className="text-xs text-sky-800 dark:text-sky-300">
                 Unifierr left these apps untouched. You can connect them later from Settings → Apps.
               </p>
-              <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-300">
+              <ul className="space-y-1 text-xs text-sky-800 dark:text-sky-300">
                 {adoptionWarnings.map((warning) => <li key={warning}>{warning}</li>)}
               </ul>
             </div>
@@ -1236,14 +1245,14 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
                     {step.status === 'ok' && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />}
                     {step.status === 'running' && <RefreshCw className="h-5 w-5 text-brand-500 animate-spin shrink-0 mt-0.5" />}
                     {step.status === 'pending' && <div className="h-5 w-5 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0 mt-0.5" />}
-                    {step.status === 'skipped' && <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />}
-                    {step.status === 'failed' && <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />}
+                    {step.status === 'skipped' && <MinusCircle className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />}
+                    {step.status === 'failed' && <Info className="h-5 w-5 text-sky-500 shrink-0 mt-0.5" />}
 
                     <div>
                       <div className="text-sm font-semibold text-slate-900 dark:text-white">{step.name}</div>
                       {step.message && <div className="text-xs text-slate-500 mt-0.5">{step.message}</div>}
                       {step.explanation && (
-                        <div className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                        <div className="mt-1 text-xs text-sky-600 dark:text-sky-400 font-medium">
                           {step.explanation}
                         </div>
                       )}
@@ -1254,7 +1263,7 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
                       )}
                     </div>
                   </div>
-                  <span className="text-xs font-semibold capitalize text-slate-400">{step.status}</span>
+                  <span className="text-xs font-semibold text-slate-400">{STEP_WORD[step.status] ?? step.status}</span>
                 </div>
               ))
             ) : (
@@ -1351,25 +1360,25 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
                     {step.status === 'ok' && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />}
                     {step.status === 'running' && <RefreshCw className="h-5 w-5 text-brand-500 animate-spin shrink-0 mt-0.5" />}
                     {step.status === 'pending' && <div className="h-5 w-5 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0 mt-0.5" />}
-                    {step.status === 'skipped' && <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />}
-                    {step.status === 'failed' && <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />}
+                    {step.status === 'skipped' && <MinusCircle className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />}
+                    {step.status === 'failed' && <Info className="h-5 w-5 text-sky-500 shrink-0 mt-0.5" />}
 
                     <div>
                       <div className="text-sm font-semibold text-slate-900 dark:text-white">{step.name}</div>
                       {step.message && <div className="text-xs text-slate-500 mt-0.5">{step.message}</div>}
                       {step.explanation && (
-                        <div className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                        <div className="mt-1 text-xs text-sky-600 dark:text-sky-400 font-medium">
                           {step.explanation}
                         </div>
                       )}
                       {step.fix && (
                         <div className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                          Suggested Fix: {step.fix}
+                          You can do this later: {step.fix}
                         </div>
                       )}
                     </div>
                   </div>
-                  <span className="text-xs font-semibold capitalize text-slate-400">{step.status}</span>
+                  <span className="text-xs font-semibold text-slate-400">{STEP_WORD[step.status] ?? step.status}</span>
                 </div>
               ))
             ) : (
@@ -1382,16 +1391,16 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
 
           {/* Retry Button if any step failed */}
           {wireJob && wireJob.status === 'failed' && (
-            <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30 flex items-center justify-between">
-              <span className="text-xs text-red-800 dark:text-red-300">
-                Some connections could not be established. Make sure external services have finished booting up.
+            <div className="p-4 rounded-xl border border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/30 flex items-center justify-between">
+              <span className="text-xs text-sky-800 dark:text-sky-300">
+                Everything important is set up. A few optional connections can be finished later, from Settings or the Health page.
               </span>
               <button
                 type="button"
-                onClick={startWire}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-1.5 px-3 shadow-xs"
+                onClick={() => void startWire()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold py-1.5 px-3 shadow-xs"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Retry Wiring
+                <RefreshCw className="h-3.5 w-3.5" /> Try again
               </button>
             </div>
           )}
@@ -1441,24 +1450,24 @@ const [showUsenetOptions, setShowUsenetOptions] = useState(false);
       {/* STEP 6: All Done Celebration */}
       {currentStep === 6 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-6 shadow-sm">
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner ${setupNeedsAttention ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'}`}>
-            {setupNeedsAttention ? <AlertTriangle className="w-10 h-10" /> : <CheckCircle2 className="w-10 h-10" />}
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400`}>
+            <CheckCircle2 className="w-10 h-10" />
           </div>
 
           <div className="max-w-md mx-auto space-y-2">
             <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              {setupNeedsAttention ? 'Setup is ready, with a few things to check' : "You're all set!"}
+              You're all set!
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
               {setupNeedsAttention
-                ? 'Unifierr finished what it could without changing existing app settings. Review these items whenever you are ready.'
+                ? 'Your media apps are connected. A few optional extras can be finished later; nothing is needed right now.'
                 : 'Your media apps are connected. You can now discover movies and shows and follow requests from one place.'}
             </p>
           </div>
 
           {setupNeedsAttention && (
-            <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 max-w-lg mx-auto text-left text-xs space-y-2 text-amber-900 dark:text-amber-200">
-              <div className="font-semibold">What needs attention</div>
+            <div className="p-4 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/30 max-w-lg mx-auto text-left text-xs space-y-2 text-sky-900 dark:text-sky-200">
+              <div className="font-semibold">Optional, whenever you like</div>
               {setupAttentionItems.map((item) => <div key={item}>{item}</div>)}
             </div>
           )}

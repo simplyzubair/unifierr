@@ -117,6 +117,7 @@ async def _wire_arr_basics(db: AsyncSession, job: Job) -> dict[int, list[str]]:
                 if dl_kind == ServiceKind.qbittorrent:
                     async with adapter_for(db, ServiceKind.qbittorrent) as q:
                         await q.ensure_category(category, torrent_path)
+                        await q.set_preferences(STOP_SEEDING)
                     async with adapter_for(db, kind, service_id=svc.id) as arr:
                         await arr.ensure_qbittorrent_client(
                             host=host, port=port, username=dl_svc.username or "",
@@ -364,6 +365,12 @@ async def _wire_converter(db: AsyncSession, job: Job) -> None:
         job.ok(s, f"New movies in {folder} are converted to HEVC, one at a time, keeping their resolution.")
     except Exception as exc:  # noqa: BLE001
         job.fail(s, exc)
+
+
+# Stop every torrent the moment it has finished downloading (share ratio 0, seeding time 0, action: stop).
+# Radarr/Sonarr then import it and remove it from qBittorrent, which also frees the space.
+STOP_SEEDING = {"max_ratio_enabled": True, "max_ratio": 0, "max_seeding_time_enabled": True,
+                "max_seeding_time": 0, "max_ratio_act": 0}
 
 
 async def run_wiring(job: Job) -> dict:
