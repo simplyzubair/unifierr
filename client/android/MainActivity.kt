@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.webkit.CookieManager
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
@@ -27,6 +28,12 @@ class MainActivity : TauriActivity() {
       view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
       WindowInsetsCompat.CONSUMED
     }
+  }
+
+  // Save the sign-in cookie to disk when the app goes to the background, so it survives the app being closed.
+  override fun onPause() {
+    CookieManager.getInstance().flush()
+    super.onPause()
   }
 
   override fun onWebViewCreate(webView: WebView) {

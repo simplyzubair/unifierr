@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appVersion, isNewer } from '@/components/common/AppUpdateButton';
+import { appVersion, isNewer } from '@/components/common/UpdateButton';
 
 describe('phone app update button', () => {
   it('reads the app version only from the Unifierr app', () => {

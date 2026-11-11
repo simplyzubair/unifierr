@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Port the web UI listens on (used for docs/links only; uvicorn decides the real one).
     port: int = 8484
     # Session lifetime in hours.
-    session_hours: int = 24 * 14
+    session_hours: int = 24 * 365  # sign in once; "Sign out" or a password change still ends it
     # Set true when served over HTTPS (reverse proxy) so cookies get the Secure flag.
     secure_cookies: bool = False
     # Path to the built frontend. If it exists, FastAPI serves it.

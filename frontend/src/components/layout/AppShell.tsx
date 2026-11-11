@@ -4,8 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
 import { CleanupPrompt } from '@/components/common/CleanupPrompt';
-import { AppUpdateButton } from '@/components/common/AppUpdateButton';
-import { healthApi, systemApi } from '@/api';
+import { UpdateButton } from '@/components/common/UpdateButton';
+import { healthApi } from '@/api';
 import {
   Compass,
   Inbox,
@@ -14,7 +14,6 @@ import {
   Search,
   Subtitles as SubtitlesIcon,
   Activity,
-  ArrowUpCircle,
   Settings as SettingsIcon,
   Sun,
   Moon,
@@ -41,7 +40,6 @@ const NAV_ITEMS: NavItem[] = [
   { manage: true, name: 'Indexers', path: '/indexers', icon: Search, adminOnly: true },
   { manage: true, name: 'Subtitles', path: '/subtitles', icon: SubtitlesIcon, adminOnly: true },
   { manage: true, name: 'Health', path: '/health', icon: Activity, adminOnly: true },
-  { manage: true, name: 'Updates', path: '/updates', icon: ArrowUpCircle, adminOnly: true },
   { manage: true, name: 'Settings', path: '/settings', icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -58,17 +56,13 @@ export const AppShell: React.FC = () => {
       <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Manage</div>
     );
 
-  // A small dot on "Updates" when a newer version was found by the last check (never contacts the registry).
-  const [updateReady, setUpdateReady] = useState(false);
   // Same calm dot on "Health" when something needs a look, so problems are noticed without opening the page.
   const [healthIssue, setHealthIssue] = useState(false);
   const dotFor = (path: string) =>
-    path === '/updates' && updateReady ? 'New version available'
-      : path === '/health' && healthIssue ? 'Something needs a look' : null;
+    path === '/health' && healthIssue ? 'Something needs a look' : null;
   useEffect(() => {
     if (!isAdmin) return;
     const look = () => {
-      systemApi.getUpdate().then((u) => setUpdateReady(!!u.available), () => undefined);
       healthApi.getOverview().then((h) => setHealthIssue(h.overall !== 'ok'), () => undefined);
     };
     void look();
@@ -242,7 +236,7 @@ export const AppShell: React.FC = () => {
           </div>
         </main>
         {isAdmin && <CleanupPrompt />}
-        <AppUpdateButton />
+        <UpdateButton isAdmin={isAdmin} />
 
         {/* Mobile Bottom Navigation for Quick Access */}
         <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-1 z-20">

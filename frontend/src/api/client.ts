@@ -106,6 +106,11 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
       }
     }
 
+    if ([502, 503, 504].includes(response.status) && !explanation) {
+      errorMessage = 'Unifierr is restarting';
+      explanation = 'This usually means an update is being installed.';
+      fix = 'Wait a minute, then try again.';
+    }
     throw new ApiError(response.status, errorMessage, explanation, fix);
   }
 
