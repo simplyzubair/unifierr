@@ -19,12 +19,14 @@ from app import __version__
 from app.core import crypto
 from app.core.config import get_settings
 from app.core.db import get_db, reset_engine
-from app.core.security import require_admin
+from app.core.security import current_user, require_admin
 from app.models import User
-from app.services import updater
+from app.services import client_release, updater
 from app.services.common import MOVIES_PATH, TORRENTS_MOVIES, TV_PATH, get_all_settings, log_event, set_settings
 
 router = APIRouter(dependencies=[Depends(require_admin)])
+# For every signed-in user: the Android app asks whether a newer app is out.
+client_router = APIRouter(dependencies=[Depends(current_user)])
 MAX_RESTORE_BYTES = 200 * 1024 * 1024
 
 
@@ -253,3 +255,8 @@ async def update_settings(body: UpdateSettingsIn, user: User = Depends(require_a
     await set_settings(db, {"auto_update": body.auto_update})
     await log_event(db, "update", f"{user.username} turned automatic updates {'on' if body.auto_update else 'off'}.")
     return await updater.status(db)
+
+
+@client_router.get("/client/latest")
+async def client_latest():
+    return await client_release.latest() or {}

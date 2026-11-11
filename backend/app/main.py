@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
 
     for module in (auth, setup, services, media, ops, system, converter):
         app.include_router(module.router, prefix="/api")
+    app.include_router(system.client_router, prefix="/api")
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                    include_in_schema=False)

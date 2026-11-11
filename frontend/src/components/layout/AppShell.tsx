@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Logo } from '@/components/common/Logo';
 import { CleanupPrompt } from '@/components/common/CleanupPrompt';
+import { AppUpdateButton } from '@/components/common/AppUpdateButton';
 import { healthApi, systemApi } from '@/api';
 import {
   Compass,
@@ -76,7 +77,7 @@ export const AppShell: React.FC = () => {
   }, [isAdmin]);
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
+    <div className="flex h-screen h-dvh w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md z-30 select-none">
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800/80">
@@ -171,7 +172,7 @@ export const AppShell: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Mobile Top Header */}
-        <header className="flex md:hidden items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-20">
+        <header className="flex md:hidden items-center justify-between px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-20">
           <Logo size="sm" />
           <div className="flex items-center gap-2">
             <button
@@ -241,9 +242,10 @@ export const AppShell: React.FC = () => {
           </div>
         </main>
         {isAdmin && <CleanupPrompt />}
+        <AppUpdateButton />
 
         {/* Mobile Bottom Navigation for Quick Access */}
-        <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md py-2 px-1 z-20">
+        <div className="md:hidden flex items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-1 z-20">
           {filteredNavItems.filter((item) => !item.manage).map((item) => {
             const Icon = item.icon;
             return (

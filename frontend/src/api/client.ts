@@ -51,11 +51,23 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
     }
   }
 
-  const response = await fetch(url, {
-    ...restOptions,
-    headers: reqHeaders,
-    credentials: 'same-origin',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...restOptions,
+      headers: reqHeaders,
+      credentials: 'same-origin',
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    // No answer at all (Tailscale or Wi-Fi off, server restarting): say so in plain words.
+    throw new ApiError(
+      0,
+      "Can't reach your Unifierr server right now",
+      'This device has no connection to the server at the moment.',
+      'Check that Wi-Fi or mobile data is on (and Tailscale, if you use it). It will work again by itself once connected.',
+    );
+  }
 
   if (response.status === 401) {
     if (!skipAuthRedirect && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/bootstrap')) {

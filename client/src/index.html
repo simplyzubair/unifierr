@@ -152,6 +152,18 @@
       font-size: .875rem;
     }
 
+    .waiting { text-align: center; }
+    .waiting p { color: #aab7d2; }
+    .spinner {
+      width: 2.5rem; height: 2.5rem; margin: .5rem auto 1rem;
+      border: 3px solid #29344d; border-top-color: #818cf8; border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .waiting ul { text-align: left; margin: 1rem 0; }
+    .waiting .actions { display: flex; flex-direction: column; gap: .5rem; align-items: center; }
+    [hidden] { display: none !important; }
+
     @media (max-width: 28rem) {
       .input-row { flex-direction: column; }
       .input-row button { width: 100%; }
@@ -170,6 +182,22 @@
       <span>Unifierr</span>
     </div>
 
+    <section class="waiting" id="waiting" hidden aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1 id="waiting-title">Opening Unifierr…</h1>
+      <p id="waiting-text"></p>
+      <ul id="waiting-tips" hidden>
+        <li>Is Wi-Fi or mobile data on?</li>
+        <li>Is Tailscale turned on and connected on this phone?</li>
+        <li>Is your NAS switched on?</li>
+      </ul>
+      <div class="actions">
+        <button type="button" id="try-now" hidden>Try again now</button>
+        <button class="secondary" type="button" id="change-address">Use a different address</button>
+      </div>
+    </section>
+
+    <div id="setup">
     <p class="eyebrow">Connect your device</p>
     <h1>Connect to your server</h1>
     <p class="intro">Enter the secure web address for the Unifierr server running on your NAS or computer.</p>
@@ -208,6 +236,7 @@
       <span>Your last server address is saved on this device only.</span>
       <button class="secondary" id="clear-address" type="button">Clear saved address</button>
     </div>
+    </div>
   </main>
 
   <script>
@@ -217,12 +246,79 @@
       const addressInput = document.querySelector("#server-address");
       const status = document.querySelector("#connection-status");
       const clearButton = document.querySelector("#clear-address");
+      const setup = document.querySelector("#setup");
+      const waiting = document.querySelector("#waiting");
+      const waitingTitle = document.querySelector("#waiting-title");
+      const waitingText = document.querySelector("#waiting-text");
+      const waitingTips = document.querySelector("#waiting-tips");
+      const tryNow = document.querySelector("#try-now");
+      let retryTimer = null;
+      let attempt = 0;
+      let target = null;
+
+      // Ask the server for a tiny page first. If the name does not resolve (Tailscale off) or there is no
+      // network, this fails quietly here instead of showing the phone's grey "Web page not available" page.
+      async function reachable(address) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        try {
+          await fetch(new URL("api/health", address), { mode: "no-cors", cache: "no-store", signal: controller.signal });
+          return true;
+        } catch {
+          return false;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      function showSetup() {
+        clearTimeout(retryTimer);
+        target = null;
+        waiting.hidden = true;
+        setup.hidden = false;
+      }
+
+      async function open(address) {
+        clearTimeout(retryTimer);
+        target = address;
+        setup.hidden = true;
+        waiting.hidden = false;
+        tryNow.hidden = true;
+        if (attempt === 0) {
+          waitingTitle.textContent = "Opening Unifierr…";
+          waitingText.textContent = "Connecting to your server.";
+          waitingTips.hidden = true;
+        }
+        if (await reachable(address)) {
+          if (target !== address) return; // the user chose another address meanwhile
+          waitingTitle.textContent = "Opening Unifierr…";
+          // replace(): the Back button then leaves the app instead of coming back to this screen.
+          window.location.replace(address);
+          return;
+        }
+        if (target !== address) return;
+        attempt += 1;
+        const wait = Math.min(5 * attempt, 30);
+        waitingTitle.textContent = "Can't reach your server yet";
+        waitingText.textContent = "No problem. We'll keep trying every few seconds and open it as soon as it answers.";
+        waitingTips.hidden = false;
+        tryNow.hidden = false;
+        retryTimer = setTimeout(() => open(address), wait * 1000);
+      }
+
+      const retrySoon = () => { if (target) { attempt = Math.max(attempt, 1); open(target); } };
+      window.addEventListener("online", retrySoon);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) retrySoon(); });
+      tryNow.addEventListener("click", retrySoon);
+      document.querySelector("#change-address").addEventListener("click", showSetup);
 
       try {
         addressInput.value = window.localStorage.getItem(storageKey) ?? "";
       } catch {
         // Private browsing or device policy can disable local storage.
       }
+      // Saved address: go straight there, no need to tap Connect every time.
+      if (addressInput.value) open(addressInput.value);
 
       function validateAddress(value) {
         const input = value.trim();
@@ -275,7 +371,8 @@
           status.textContent = "Couldn't save this address on the device, but you can still connect.";
         }
 
-        window.location.assign(serverAddress);
+        attempt = 0;
+        open(serverAddress);
       });
 
       clearButton.addEventListener("click", () => {

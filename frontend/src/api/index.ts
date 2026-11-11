@@ -398,6 +398,9 @@ export const systemApi = {
 
   getUpdate: () => apiClient<UpdateInfo>('/api/system/update', { method: 'GET' }),
 
+  getClientLatest: () =>
+    apiClient<{ version?: string; android_url?: string }>('/api/client/latest', { method: 'GET' }),
+
   checkUpdate: () => apiClient<UpdateInfo>('/api/system/update/check', { method: 'POST' }),
 
   applyUpdate: () =>
