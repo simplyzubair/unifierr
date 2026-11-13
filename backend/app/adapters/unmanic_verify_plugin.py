@@ -91,6 +91,8 @@ def probe(path: str) -> dict:
         "height": int(video[0].get("height") or 0),
         "audio": sum(1 for s in streams if s.get("codec_type") == "audio"),
         "subtitle": sum(1 for s in streams if s.get("codec_type") == "subtitle"),
+        "transfer": video[0].get("color_transfer") or "",
+        "ten_bit": "10" in (video[0].get("pix_fmt") or ""),
     }
 
 
@@ -115,6 +117,10 @@ def problem(original: str, converted: str) -> str | None:
         return f"audio tracks dropped ({before['audio']} -> {after['audio']})"
     if after["subtitle"] < before["subtitle"]:
         return f"subtitles dropped ({before['subtitle']} -> {after['subtitle']})"
+    if before["transfer"] in HDR_TRANSFERS and after["transfer"] != before["transfer"]:
+        return f"HDR was lost ({before['transfer']} -> {after['transfer'] or 'none'})"
+    if before["ten_bit"] and not after["ten_bit"]:
+        return "10-bit colour was lost"
     end = max(0.0, after["duration"] - SAMPLE_SECONDS - 1)
     for start in sorted({0.0, end / 2, end}):
         if not decodes(converted, start):
@@ -124,8 +130,12 @@ def problem(original: str, converted: str) -> str | None:
     return None
 
 
-# Already efficient codecs: re-encoding them to HEVC cannot make them meaningfully smaller (AV1 would even grow).
+# Already efficient codecs: re-encoding them to HEVC cannot make them meaningfully smaller (AV1 would even grow)...
 EFFICIENT_CODECS = {"hevc", "av1", "vp9"}
+# ... unless the file is a near-untouched disc copy ("remux"): far above what HEVC needs for the same picture.
+# Bits/s per height above which even an efficient-codec file is shrunk.
+BLOATED_BITRATE = ((720, 10_000_000), (1080, 20_000_000), (1440, 30_000_000), (2160, 40_000_000))
+HDR_TRANSFERS = {"smpte2084", "arib-std-b67"}  # HDR10/Dolby Vision base layer, HLG
 # Bitrate (bits/s) at or below which an older-codec file is already lean for its height; converting saves too
 # little to be worth hours of CPU. Roughly what HEVC itself would produce at our quality setting.
 LEAN_BITRATE = ((480, 1_000_000), (720, 2_000_000), (1080, 4_000_000), (1440, 7_000_000), (2160, 12_000_000))
@@ -142,10 +152,13 @@ def skip_reason(path: str) -> str | None:
     except ValueError as exc:
         return str(exc)  # leave damaged or odd files alone
     codec = video[0].get("codec_name", "")
-    if codec in EFFICIENT_CODECS:
-        return f"already {codec.upper()}"
     bitrate = int(fmt.get("bit_rate") or 0)
     height = int(video[0].get("height") or 0)
+    if codec in EFFICIENT_CODECS:
+        bloated = next((rate for max_height, rate in BLOATED_BITRATE if height <= max_height), BLOATED_BITRATE[-1][1])
+        if not bitrate or bitrate <= bloated:
+            return f"already {codec.upper()}"
+        return None  # a huge disc copy: worth shrinking (the check afterwards insists HDR and 10-bit survive)
     limit = next((rate for max_height, rate in LEAN_BITRATE if height <= max_height), LEAN_BITRATE[-1][1])
     if bitrate and bitrate <= limit:
         return f"already small ({bitrate / 1e6:.1f} Mbit/s for {height}p)"

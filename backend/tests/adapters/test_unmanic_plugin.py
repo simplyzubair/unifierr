@@ -13,6 +13,31 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin.time, "sleep", lambda s: None)
 
 
+def test_huge_disc_copies_are_shrunk_even_when_hevc(monkeypatch):
+    fake_probe(monkeypatch, codec="hevc", bitrate=64_000_000, height=2160)
+    assert plugin.skip_reason("/m.mkv") is None
+    fake_probe(monkeypatch, codec="hevc", bitrate=32_000_000, height=2160)
+    assert plugin.skip_reason("/m.mkv") == "already HEVC"
+
+
+def _probe_pair(monkeypatch, before, after):
+    base = {"duration": 100.0, "width": 3840, "height": 2160, "audio": 1, "subtitle": 1,
+            "transfer": "smpte2084", "ten_bit": True}
+    results = iter([{**base, **before}, {**base, **after}])
+    monkeypatch.setattr(plugin, "probe", lambda path: next(results))
+    monkeypatch.setattr(plugin, "decodes", lambda path, start: True)
+    monkeypatch.setattr(plugin.os.path, "getsize", lambda path: 1 if "cache" in path else 2)
+
+
+def test_copy_that_loses_hdr_or_10_bit_is_rejected(monkeypatch):
+    _probe_pair(monkeypatch, {}, {"transfer": "bt709"})
+    assert "HDR was lost" in plugin.problem("/data/m.mkv", "/cache/m.mkv")
+    _probe_pair(monkeypatch, {}, {"ten_bit": False})
+    assert "10-bit" in plugin.problem("/data/m.mkv", "/cache/m.mkv")
+    _probe_pair(monkeypatch, {}, {})
+    assert plugin.problem("/data/m.mkv", "/cache/m.mkv") is None
+
+
 def fake_probe(monkeypatch, codec="h264", bitrate=8_000_000, height=1080):
     monkeypatch.setattr(plugin, "ffprobe", lambda p: (
         {"bit_rate": str(bitrate), "duration": "100"}, [], [{"codec_name": codec, "height": height}]))

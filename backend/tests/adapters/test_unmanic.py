@@ -25,6 +25,7 @@ def routes(mock, *, installed: bool, groups: list):
         "settings": mock.post(f"{U}/plugins/settings/update").respond(json={"success": True}),
         "groups": mock.get(f"{U}/settings/worker_groups").respond(json={"worker_groups": groups}),
         "group_write": mock.post(f"{U}/settings/worker_group/write").respond(json={"success": True}),
+        "scan": mock.post(f"{U}/settings/write").respond(json={"success": True}),
         "upload": mock.post(f"{U}/upload/plugin/file").respond(json={"success": True}),
         "flow": mock.post(f"{U}/plugins/flow").respond(json={"results": [
             {"plugin_id": "video_transcoder", "name": "T"}, {"plugin_id": "unifierr_verify", "name": "U"}]}),
@@ -51,6 +52,7 @@ async def test_fresh_unmanic_is_fully_configured(mock):
     assert sent == TRANSCODE  # only our keys, never other plugin settings
     assert sent["target_resolution"] == "source" and sent["video_codec"] == "hevc"
     assert body(r["group_write"])["number_of_workers"] == 1
+    assert body(r["scan"])["settings"] == {"enable_library_scanner": True, "schedule_full_scan_minutes": 1440}
 
 
 async def test_already_set_up_unmanic_is_not_duplicated(mock):

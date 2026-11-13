@@ -25,7 +25,9 @@ CHECK_SOURCE = (Path(__file__).with_name("unmanic_verify_plugin.py")).read_text(
 TRANSCODE = {
     "mode": "standard", "video_codec": "hevc", "video_encoder": "libx265", "preset": "fast",
     "constant_quality_scale": "23", "target_resolution": "source", "keep_container": True,
-    "force_transcode": False,
+    # The Unifierr check decides what gets converted (it answers first); without "force" the encoder would
+    # refuse the oversized HEVC disc copies the check picked.
+    "force_transcode": True,
 }
 
 
@@ -110,6 +112,10 @@ class UnmanicAdapter(BaseAdapter):
         settings = [dict(s, value=TRANSCODE[s["key"]]) for s in info.get("settings", []) if s.get("key") in TRANSCODE]
         await self._json("POST", "/plugins/settings/update",
                          {"plugin_id": PLUGIN, "library_id": library["id"], "settings": settings})
+
+        # Also look through the whole folder once a day, so a file missed while Unmanic was down still gets checked.
+        await self._json("POST", "/settings/write", {"settings": {
+            "enable_library_scanner": True, "schedule_full_scan_minutes": 1440}})
 
         if not (await self._json("GET", "/settings/worker_groups"))["worker_groups"]:
             await self._json("POST", "/settings/worker_group/write", {
