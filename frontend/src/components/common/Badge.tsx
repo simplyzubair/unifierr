@@ -52,7 +52,7 @@ export const AvailabilityBadge: React.FC<AvailabilityBadgeProps> = ({
           className={`inline-flex items-center gap-1.5 rounded-full bg-amber-100 font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 ${sizeClasses} ${className}`}
         >
           <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-          Missing
+          Not downloaded yet
         </span>
       );
 

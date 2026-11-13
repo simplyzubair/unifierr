@@ -20,7 +20,7 @@ describe('AvailabilityBadge', () => {
 
   it('renders "Missing" badge for missing status', () => {
     render(<AvailabilityBadge status="missing" />);
-    expect(screen.getByText('Missing')).toBeInTheDocument();
+    expect(screen.getByText('Not downloaded yet')).toBeInTheDocument();
   });
 
   it('renders "Not in Library" badge for not_added status', () => {
