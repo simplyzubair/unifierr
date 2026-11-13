@@ -25,6 +25,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_update": False,
     "cleanup_review_days": 90,  # 0 = never ask
     "ntfy_url": "",
+    "download_start_hour": 0,  # downloads run at full speed only between these hours;
+    "download_end_hour": 0,  # equal = any time
     "media_server": None,  # jellyfin | plex
     "vpn_enabled": False,
     "vpn_provider": "",

@@ -118,6 +118,8 @@ async def _wire_arr_basics(db: AsyncSession, job: Job) -> dict[int, list[str]]:
                     async with adapter_for(db, ServiceKind.qbittorrent) as q:
                         await q.ensure_category(category, torrent_path)
                         await q.set_preferences(STOP_SEEDING)
+                        await q.set_download_hours(await get_setting(db, "download_start_hour"),
+                                                   await get_setting(db, "download_end_hour"))
                     async with adapter_for(db, kind, service_id=svc.id) as arr:
                         await arr.ensure_qbittorrent_client(
                             host=host, port=port, username=dl_svc.username or "",

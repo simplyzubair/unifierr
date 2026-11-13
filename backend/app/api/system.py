@@ -16,13 +16,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app import __version__
+from app.adapters.base import ServiceKind
 from app.core import crypto
 from app.core.config import get_settings
 from app.core.db import get_db, reset_engine
+from app.core.errors import UnifierrError
 from app.core.security import current_user, require_admin
 from app.models import User
 from app.services import client_release, updater
-from app.services.common import MOVIES_PATH, TORRENTS_MOVIES, TV_PATH, get_all_settings, log_event, set_settings
+from app.services.common import (
+    MOVIES_PATH,
+    TORRENTS_MOVIES,
+    TV_PATH,
+    adapter_for,
+    get_all_settings,
+    get_setting,
+    log_event,
+    set_settings,
+)
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 # For every signed-in user: the Android app asks whether a newer app is out.
@@ -46,6 +57,8 @@ class SettingsIn(BaseModel):
     download_client: Literal["qbittorrent", "sabnzbd", "nzbget"] | None = None
     trash_profiles: bool | None = None
     cleanup_review_days: Literal[0, 30, 90, 180] | None = None
+    download_start_hour: int | None = Field(default=None, ge=0, le=23)
+    download_end_hour: int | None = Field(default=None, ge=0, le=23)
     # Empty clears it. https only; private addresses are refused when sending (SafeAsyncClient).
     ntfy_url: str | None = Field(default=None, max_length=300, pattern=r"^(https://[^\s/]+/[A-Za-z0-9_-]+)?$")
     trash_profile: str | None = Field(default=None, max_length=128)
@@ -65,6 +78,7 @@ async def get_settings_route(db: AsyncSession = Depends(get_db)):
             "download_client": s["download_client"],
             "trash_profiles": s.get("trash_profiles", False), "trash_profile": s.get("trash_profile"),
             "cleanup_review_days": s["cleanup_review_days"], "ntfy_url": s["ntfy_url"],
+            "download_start_hour": s["download_start_hour"], "download_end_hour": s["download_end_hour"],
             "movies_path": MOVIES_PATH, "tv_path": TV_PATH, "downloads_path": TORRENTS_MOVIES.rsplit("/", 1)[0],
             "version": __version__}
 
@@ -103,7 +117,19 @@ async def put_settings(body: SettingsIn, db: AsyncSession = Depends(get_db)):
 
     await set_settings(db, values)
     await log_event(db, "settings", "Settings changed.")
+    if {"download_start_hour", "download_end_hour"} & values.keys():
+        await _apply_download_hours(db)
     return await get_settings_route(db)
+
+
+async def _apply_download_hours(db: AsyncSession) -> None:
+    start, end = await get_setting(db, "download_start_hour"), await get_setting(db, "download_end_hour")
+    try:
+        async with adapter_for(db, ServiceKind.qbittorrent, required=False) as q:
+            if q:
+                await q.set_download_hours(start, end)
+    except UnifierrError as exc:  # saved anyway; setup re-applies it the next time it runs
+        await log_event(db, "settings", f"Could not set download hours in qBittorrent yet: {exc}", "warning")
 
 
 def _db_path() -> Path:

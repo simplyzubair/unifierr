@@ -336,6 +336,8 @@ export interface SystemSettings {
   trash_profiles?: boolean;
   trash_profile?: string | null;
   cleanup_review_days?: 0 | 30 | 90 | 180;
+  download_start_hour?: number;
+  download_end_hour?: number;
   ntfy_url?: string;
 }
 
@@ -356,6 +358,8 @@ export interface SystemSettingsUpdate {
   trash_profiles?: boolean;
   trash_profile?: string;
   cleanup_review_days?: 0 | 30 | 90 | 180;
+  download_start_hour?: number;
+  download_end_hour?: number;
   ntfy_url?: string;
 }
 

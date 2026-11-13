@@ -29,6 +29,9 @@ import {
 
 type SettingsTab = 'health' | 'apps' | 'network' | 'users' | 'account' | 'backup' | 'remote' | 'about';
 
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'am' : 'pm'}`;
+
 export const Settings: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -79,6 +82,8 @@ export const Settings: React.FC = () => {
     download_client: 'qbittorrent' as 'qbittorrent' | 'sabnzbd' | 'nzbget',
     trash_profiles: false,
     cleanup_review_days: 90 as 0 | 30 | 90 | 180,
+    download_start_hour: 0,
+    download_end_hour: 0,
     ntfy_url: '',
   });
   const [networkSecrets, setNetworkSecrets] = useState({ vpn_username: '', vpn_password: '', wireguard_private_key: '' });
@@ -124,6 +129,8 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
         download_client: settings.download_client ?? 'qbittorrent',
         trash_profiles: settings.trash_profiles ?? false,
         cleanup_review_days: settings.cleanup_review_days ?? 90,
+        download_start_hour: settings.download_start_hour ?? 0,
+        download_end_hour: settings.download_end_hour ?? 0,
         ntfy_url: settings.ntfy_url ?? '',
       });
     } catch (err: unknown) {
@@ -775,6 +782,36 @@ const [showUsenetClients, setShowUsenetClients] = useState(false);
           </div>
 
           <div className="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+            <fieldset>
+              <legend className="text-sm font-semibold text-slate-900 dark:text-white">Download hours</legend>
+              <span className="block text-xs text-slate-500 mt-0.5">
+                Download only at night so the internet and movie playback stay fast during the day. Outside these
+                hours downloads wait (they keep their place and continue later). Pick the same hour twice for any time.
+              </span>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+                <label htmlFor="download-start" className="text-slate-600 dark:text-slate-400">From</label>
+                <select
+                  id="download-start"
+                  value={networkForm.download_start_hour}
+                  onChange={(event) => setNetworkForm({ ...networkForm, download_start_hour: Number(event.target.value) })}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm"
+                >
+                  {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+                </select>
+                <label htmlFor="download-end" className="text-slate-600 dark:text-slate-400">to</label>
+                <select
+                  id="download-end"
+                  value={networkForm.download_end_hour}
+                  onChange={(event) => setNetworkForm({ ...networkForm, download_end_hour: Number(event.target.value) })}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm"
+                >
+                  {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+                </select>
+                {networkForm.download_start_hour === networkForm.download_end_hour && (
+                  <span className="text-xs text-slate-500">(any time)</span>
+                )}
+              </div>
+            </fieldset>
             <label className="block">
               <span className="text-sm font-semibold text-slate-900 dark:text-white">Ask to delete watched movies after</span>
               <span className="block text-xs text-slate-500 mt-0.5">Only movies someone has already watched. You always choose Yes or No.</span>

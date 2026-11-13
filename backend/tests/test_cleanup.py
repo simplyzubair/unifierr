@@ -151,3 +151,10 @@ async def test_admin_chooses_the_wait_or_never(client, fake_cleanup, setting, da
 async def test_wait_must_be_one_of_the_offered_choices(client):
     await make_admin(client)
     assert (await client.put("/api/settings", json={"cleanup_review_days": 7}, headers=CSRF)).status_code == 422
+
+
+@pytest.mark.parametrize("hour", [-1, 24])
+async def test_download_hours_must_be_a_real_hour(client, hour):
+    await make_admin(client)
+    r = await client.put("/api/settings", json={"download_start_hour": hour}, headers=CSRF)
+    assert r.status_code == 422

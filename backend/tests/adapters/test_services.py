@@ -460,3 +460,25 @@ async def test_registry_uses_given_client_and_does_not_close_it():
     await a.aclose()
     assert not client.is_closed
     await client.aclose()
+
+
+async def test_qbit_download_hours_slow_outside_the_window(mock):
+    login_ok(mock)
+    prefs = mock.post(f"{QB}/api/v2/app/setPreferences").respond(200)
+    async with qbit() as a:
+        await a.set_download_hours(2, 10)
+    sent = json.loads(form(prefs)["json"][0])
+    assert sent["scheduler_enabled"] is True
+    assert (sent["schedule_from_hour"], sent["schedule_to_hour"]) == (10, 2)  # slow from 10:00 until 02:00
+    assert sent["alt_dl_limit"] == 1024 and sent["alt_up_limit"] == 1024
+
+
+async def test_qbit_download_hours_any_time_turns_slow_mode_off(mock):
+    login_ok(mock)
+    prefs = mock.post(f"{QB}/api/v2/app/setPreferences").respond(200)
+    mock.get(f"{QB}/api/v2/transfer/speedLimitsMode").respond(200, text="1")
+    toggle = mock.post(f"{QB}/api/v2/transfer/toggleSpeedLimitsMode").respond(200)
+    async with qbit() as a:
+        await a.set_download_hours(0, 0)
+    assert json.loads(form(prefs)["json"][0]) == {"scheduler_enabled": False}
+    assert toggle.called

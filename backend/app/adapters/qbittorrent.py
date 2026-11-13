@@ -194,6 +194,22 @@ class QbittorrentAdapter(BaseAdapter):
     async def set_preferences(self, prefs: dict[str, Any]) -> None:
         await self._ok("POST", "/api/v2/app/setPreferences", data={"json": json.dumps(prefs)})
 
+    async def set_download_hours(self, start: int, end: int) -> None:
+        """Full speed only from `start` to `end` o'clock (qBittorrent's own clock); nearly stopped otherwise.
+        start == end means any time. Uses qBittorrent's built-in "alternative speed" scheduler."""
+        if start == end:
+            await self.set_preferences({"scheduler_enabled": False})
+            mode = (await self._ok("GET", "/api/v2/transfer/speedLimitsMode")).text.strip()
+            if mode == "1":  # the slow mode was on when the schedule was switched off: back to full speed
+                await self._ok("POST", "/api/v2/transfer/toggleSpeedLimitsMode")
+            return
+        await self.set_preferences({
+            "alt_dl_limit": 1024, "alt_up_limit": 1024,  # 1 KiB/s: 0 would mean "unlimited" in qBittorrent
+            "scheduler_enabled": True, "scheduler_days": 0,  # every day
+            "schedule_from_hour": end, "schedule_from_min": 0,  # the slow window runs from `end` ...
+            "schedule_to_hour": start, "schedule_to_min": 0,  # ... until `start`
+        })
+
     async def transfer_info(self) -> dict[str, Any]:
         info = parse_json(await self._ok("GET", "/api/v2/transfer/info"), self.display_name) or {}
         return {"dl_speed": int(info.get("dl_info_speed") or 0), "up_speed": int(info.get("up_info_speed") or 0),
